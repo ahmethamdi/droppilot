@@ -156,7 +156,45 @@ class ShopifyStoreResource extends Resource
                         ->label('Siparişleri Görüntüle')
                         ->icon('heroicon-o-clipboard-document-list')
                         ->color('info')
-                        ->url(fn (ShopifyStore $record) => static::getUrl('orders', ['record' => $record])),
+                        ->modalHeading(fn (ShopifyStore $record) => $record->name . ' — Son Siparişler')
+                        ->modalSubmitAction(false)
+                        ->modalCancelActionLabel('Kapat')
+                        ->modalWidth('7xl')
+                        ->modalContent(function (ShopifyStore $record) {
+                            try {
+                                $orders = (new \App\Services\Shopify\ShopifyClient($record))->getOrders(50);
+                            } catch (\Throwable $e) {
+                                $orders = [];
+                                $error = $e->getMessage();
+                            }
+
+                            return view('filament.modals.shopify-orders', [
+                                'orders' => $orders,
+                                'error' => $error ?? null,
+                            ]);
+                        }),
+
+                    Tables\Actions\Action::make('view_customers')
+                        ->label('Müşterileri Görüntüle')
+                        ->icon('heroicon-o-users')
+                        ->color('info')
+                        ->modalHeading(fn (ShopifyStore $record) => $record->name . ' — Müşteriler')
+                        ->modalSubmitAction(false)
+                        ->modalCancelActionLabel('Kapat')
+                        ->modalWidth('7xl')
+                        ->modalContent(function (ShopifyStore $record) {
+                            try {
+                                $customers = (new \App\Services\Shopify\ShopifyClient($record))->getCustomers(50);
+                            } catch (\Throwable $e) {
+                                $customers = [];
+                                $error = $e->getMessage();
+                            }
+
+                            return view('filament.modals.shopify-customers', [
+                                'customers' => $customers,
+                                'error' => $error ?? null,
+                            ]);
+                        }),
 
                     Tables\Actions\EditAction::make()->label('Düzenle / Bayi Eşle'),
                 ]),
@@ -172,7 +210,6 @@ class ShopifyStoreResource extends Resource
         return [
             'index' => Pages\ListShopifyStores::route('/'),
             'edit' => Pages\EditShopifyStore::route('/{record}/edit'),
-            'orders' => Pages\ViewShopifyStoreOrders::route('/{record}/orders'),
         ];
     }
 }
