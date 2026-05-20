@@ -6,6 +6,7 @@ use App\Models\ShopifyStore;
 use App\Services\Shopify\Requests\GetCustomersRequest;
 use App\Services\Shopify\Requests\GetOrdersRequest;
 use App\Services\Shopify\Requests\GetShopRequest;
+use Osiset\ShopifyApp\Services\OfflineAccessTokenRefresher;
 
 class ShopifyClient
 {
@@ -13,7 +14,29 @@ class ShopifyClient
 
     public function connector(): ShopifyConnector
     {
+        $this->ensureFreshToken();
+
         return new ShopifyConnector($this->store);
+    }
+
+    /**
+     * Süresi dolmuş offline token'ı paketin refresh servisi ile yeniler.
+     * Crypt::decryptString refresh token'ı çözer, Shopify'a refresh_token
+     * grant'ı POST eder, yeni access token + yeni refresh token alıp DB'ye yazar.
+     */
+    protected function ensureFreshToken(): void
+    {
+        try {
+            app(OfflineAccessTokenRefresher::class)->refreshIfNeeded($this->store);
+            $this->store->refresh();
+        } catch (\Throwable $e) {
+            // Refresh başarısızsa eski token'ı kullanmaya devam et — Shopify
+            // 401 dönerse zaten üst katmanda anlaşılır.
+            \Illuminate\Support\Facades\Log::warning('Shopify token refresh skipped', [
+                'shop' => $this->store->name,
+                'reason' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function getShop(): array
