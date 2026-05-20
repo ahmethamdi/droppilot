@@ -75,6 +75,10 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "php-http/discovery": true
+        },
+        "platform": {
+            "php": "8.3.6",
+            "ext-intl": "1"
         }
     },
     "minimum-stability": "stable",
