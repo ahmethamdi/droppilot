@@ -26,6 +26,7 @@ class Supplier extends Model
         'default_order_status_id',
         'default_sales_price_id',
         'default_plenty_id',
+        'b2b_class_ids',
         'config',
         'status',
         'owner_user_id',
@@ -33,6 +34,7 @@ class Supplier extends Model
 
     protected $casts = [
         'config' => 'array',
+        'b2b_class_ids' => 'array',
     ];
 
     protected $hidden = [

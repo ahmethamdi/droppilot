@@ -152,6 +152,18 @@ class SupplierResource extends Resource
                         ->helperText('Bu hesapta birden fazla mağaza varsa Plenty\'den manuel girin.'),
                 ]),
 
+            Forms\Components\Section::make('B2B Müşteri Sınıfları')
+                ->description('Bu tedarikçide B2B müşterileri ayıran Plenty contact class ID\'leri. Boş bırakırsanız tüm contact\'lar şirket adı dolu olanlara göre taranır (yavaş).')
+                ->hiddenOn('create')
+                ->schema([
+                    Forms\Components\TagsInput::make('b2b_class_ids')
+                        ->label('B2B Plenty class ID\'leri')
+                        ->placeholder('12, 50, 1...')
+                        ->helperText('Plenty\'de bu class\'lara atanmış müşteriler B2B olarak gösterilir. Ör: McVapes class=12, iocaste class=50.')
+                        ->separator(',')
+                        ->splitKeys(['Enter', 'Tab', ',']),
+                ]),
+
             Forms\Components\Section::make('Sahip')
                 ->schema([
                     Forms\Components\Select::make('owner_user_id')
@@ -299,6 +311,30 @@ class SupplierResource extends Resource
                                     ->persistent()
                                     ->send();
                             }
+                        }),
+
+                    Tables\Actions\Action::make('view_b2b_contacts')
+                        ->label('B2B Müşterileri Görüntüle')
+                        ->icon('heroicon-o-building-office-2')
+                        ->color('primary')
+                        ->modalHeading(fn (Supplier $record) => $record->name . ' — B2B Müşteriler')
+                        ->modalSubmitAction(false)
+                        ->modalCancelActionLabel('Kapat')
+                        ->modalWidth('7xl')
+                        ->modalContent(function (Supplier $record) {
+                            $contacts = [];
+                            $error = null;
+                            try {
+                                $contacts = (new PlentyClient($record))->listB2BContacts(200);
+                            } catch (\Throwable $e) {
+                                $error = $e->getMessage();
+                            }
+
+                            return view('filament.modals.plenty-b2b-contacts', [
+                                'supplier' => $record,
+                                'contacts' => $contacts,
+                                'error' => $error,
+                            ]);
                         }),
 
                     Tables\Actions\EditAction::make(),

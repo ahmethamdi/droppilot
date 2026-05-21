@@ -7,6 +7,7 @@ use App\Models\SupplierReference;
 use App\Models\SkuLookup;
 use App\Services\Plenty\Requests\GetContactAddressesRequest;
 use App\Services\Plenty\Requests\GetContactRequest;
+use App\Services\Plenty\Requests\GetContactsRequest;
 use App\Services\Plenty\Requests\GetOrderStatusesRequest;
 use App\Services\Plenty\Requests\GetReferrersRequest;
 use App\Services\Plenty\Requests\GetSalesPricesRequest;
@@ -401,6 +402,102 @@ class PlentyClient
             'stock_net' => $cache->stock_net !== null ? (float) $cache->stock_net : null,
             'is_active' => (bool) $cache->is_active,
             'cache' => $cache,
+        ];
+    }
+
+    /**
+     * B2B müşterileri listele.
+     *
+     * Strateji:
+     * - Supplier'da b2b_class_ids DOLUYSA: o class'ları sırayla çek (HIZLI, sadece B2B class'lar).
+     *   companyName check yine yapılır (false-positive elemek için).
+     * - Boşsa: ilk N sayfayı tarayıp companyName non-empty olanları döndür (YAVAŞ — fallback).
+     *
+     * @param  int  $limit  Maks. dönecek müşteri sayısı (200 default).
+     * @return list<array{id:int,first_name:string,last_name:string,company:string,email:string,class_id:int,created_at:string}>
+     */
+    public function listB2BContacts(int $limit = 200): array
+    {
+        $classIds = $this->supplier->b2b_class_ids;
+        $results = [];
+
+        if (is_array($classIds) && count($classIds) > 0) {
+            // FAST PATH: belirtilen classId'leri sırayla çek
+            foreach ($classIds as $classId) {
+                $page = 1;
+                while (count($results) < $limit) {
+                    $response = $this->connector()->send(new GetContactsRequest($page, 250, (int) $classId));
+                    $response->throw();
+                    $body = $response->json();
+                    $entries = $body['entries'] ?? [];
+
+                    foreach ($entries as $e) {
+                        $company = $e['accounts'][0]['companyName'] ?? '';
+                        if ($company === '') {
+                            continue;
+                        }
+                        $results[] = $this->formatContact($e);
+                        if (count($results) >= $limit) {
+                            break 2;
+                        }
+                    }
+
+                    if (! empty($body['isLastPage']) || empty($entries)) {
+                        break;
+                    }
+                    $page++;
+                    if ($page > 50) {
+                        break;
+                    }
+                }
+            }
+
+            return $results;
+        }
+
+        // FALLBACK: tüm contact'ları sırayla tara, companyName dolu olanları topla
+        // (yavaş — admin b2b_class_ids set etmemiş demek)
+        $page = 1;
+        while (count($results) < $limit) {
+            $response = $this->connector()->send(new GetContactsRequest($page, 250));
+            $response->throw();
+            $body = $response->json();
+            $entries = $body['entries'] ?? [];
+
+            foreach ($entries as $e) {
+                $company = $e['accounts'][0]['companyName'] ?? '';
+                if ($company === '') {
+                    continue;
+                }
+                $results[] = $this->formatContact($e);
+                if (count($results) >= $limit) {
+                    break 2;
+                }
+            }
+
+            if (! empty($body['isLastPage']) || empty($entries)) {
+                break;
+            }
+            $page++;
+            if ($page > 20) {
+                break; // güvenlik — max 5000 contact tara, sonra dur
+            }
+        }
+
+        return $results;
+    }
+
+    protected function formatContact(array $e): array
+    {
+        return [
+            'id' => (int) $e['id'],
+            'first_name' => $e['firstName'] ?? '',
+            'last_name' => $e['lastName'] ?? '',
+            'company' => $e['accounts'][0]['companyName'] ?? '',
+            'email' => $e['email'] ?? '',
+            'class_id' => (int) ($e['classId'] ?? 0),
+            'last_order_at' => $e['lastOrderAt'] ?? null,
+            'created_at' => $e['createdAt'] ?? null,
         ];
     }
 }
