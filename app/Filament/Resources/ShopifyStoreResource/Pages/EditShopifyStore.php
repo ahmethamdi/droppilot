@@ -32,12 +32,13 @@ class EditShopifyStore extends EditRecord
     protected function afterSave(): void
     {
         $data = $this->form->getRawState();
-        $supplierId = $data['mapping_supplier_id'] ?? null;
-        $contactId = $data['mapping_plenty_contact_id'] ?? null;
+        $combined = $data['mapping_bayi'] ?? null;
 
-        if (! $supplierId || ! $contactId) {
+        if (! $combined || ! str_contains($combined, ':')) {
             return; // eşleştirme yapılmamış
         }
+
+        [$supplierId, $contactId] = explode(':', $combined, 2);
 
         $supplier = Supplier::find($supplierId);
         if (! $supplier) {
@@ -73,7 +74,6 @@ class EditShopifyStore extends EditRecord
         }
 
         $companyName = trim((string) ($contact['accounts'][0]['companyName'] ?? ''));
-        $email = trim((string) ($contact['email'] ?? ''));
         $fullName = trim(($contact['firstName'] ?? '').' '.($contact['lastName'] ?? ''));
         $displayName = $companyName !== '' ? $companyName : ($fullName !== '' ? $fullName : "Plenty #{$contactId}");
 
@@ -101,8 +101,13 @@ class EditShopifyStore extends EditRecord
             'status' => 'active',
         ]);
 
-        // ShopifyStore'u tenant'a bağla
-        $this->record->update(['tenant_id' => $tenant->id]);
+        // ShopifyStore'u tenant + supplier + plenty_contact_id ile direkt ilişkilendir
+        // (Faz 4 sipariş routing'i için hızlı erişim — Tenant/pivot dolaşmaya gerek kalmasın)
+        $this->record->update([
+            'tenant_id' => $tenant->id,
+            'supplier_id' => $supplier->id,
+            'plenty_contact_id' => (int) $contactId,
+        ]);
 
         Notification::make()
             ->title('Eşleştirme kaydedildi')

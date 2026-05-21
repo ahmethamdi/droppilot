@@ -444,16 +444,20 @@ class PlentyClient
      * @param  int  $limit  Maks. dönecek müşteri sayısı (200 default).
      * @return list<array{id:int,first_name:string,last_name:string,company:string,email:string,class_id:int,created_at:string}>
      */
-    public function listB2BContacts(int $limit = 200): array
+    public function listB2BContacts(int $limit = 1000): array
     {
         $classIds = $this->supplier->b2b_class_ids;
         $results = [];
 
-        if (is_array($classIds) && count($classIds) > 0) {
-            // FAST PATH: belirtilen classId'leri sırayla çek
+        if (\is_array($classIds) && \count($classIds) > 0) {
+            // FAST PATH: her classId için ADIL quota — toplam limit / class sayısı.
+            // Böylece bir class limit'i tüketip diğerlerini engellemez.
+            $perClassQuota = max(100, intdiv($limit, \count($classIds)) + 50);
+
             foreach ($classIds as $classId) {
+                $perClassCount = 0;
                 $page = 1;
-                while (count($results) < $limit) {
+                while ($perClassCount < $perClassQuota && \count($results) < $limit) {
                     $response = $this->connector()->send(new GetContactsRequest($page, 250, (int) $classId));
                     $response->throw();
                     $body = $response->json();
@@ -465,8 +469,9 @@ class PlentyClient
                             continue;
                         }
                         $results[] = $this->formatContact($e);
-                        if (count($results) >= $limit) {
-                            break 2;
+                        $perClassCount++;
+                        if ($perClassCount >= $perClassQuota || \count($results) >= $limit) {
+                            break;
                         }
                     }
 
@@ -477,6 +482,9 @@ class PlentyClient
                     if ($page > 50) {
                         break;
                     }
+                }
+                if (\count($results) >= $limit) {
+                    break;
                 }
             }
 
@@ -510,6 +518,36 @@ class PlentyClient
             if ($page > 20) {
                 break; // güvenlik — max 5000 contact tara, sonra dur
             }
+        }
+
+        return $results;
+    }
+
+    /**
+     * E-posta ile direkt Plenty araması (ShopifyStore search-as-you-type için).
+     * companyName non-empty filtresinden geçer (B2B garantisi).
+     *
+     * @return list<array{id:int,first_name:string,last_name:string,company:string,email:string,class_id:int,created_at:string}>
+     */
+    public function searchContactsByEmail(string $email, int $limit = 25): array
+    {
+        if (trim($email) === '') {
+            return [];
+        }
+
+        $response = $this->connector()->send(new GetContactsRequest(1, $limit, null, $email));
+        $response->throw();
+
+        $body = $response->json();
+        $entries = $body['entries'] ?? [];
+
+        $results = [];
+        foreach ($entries as $e) {
+            $company = $e['accounts'][0]['companyName'] ?? '';
+            if ($company === '') {
+                continue;
+            }
+            $results[] = $this->formatContact($e);
         }
 
         return $results;

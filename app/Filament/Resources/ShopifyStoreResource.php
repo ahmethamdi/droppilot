@@ -52,108 +52,138 @@ class ShopifyStoreResource extends Resource
                     Forms\Components\Placeholder::make('current_link')
                         ->label('Mevcut Eşleşme')
                         ->content(function (?ShopifyStore $record) {
-                            if (! $record || ! $record->tenant_id) {
+                            if (! $record || ! $record->plenty_contact_id) {
                                 return '— Henüz Plenty müşterisine eşlenmemiş.';
                             }
+                            $supplier = $record->supplier;
                             $tenant = $record->tenant;
-                            $links = $tenant->suppliers()->get();
-                            $lines = ["Bayi: {$tenant->name}"];
-                            foreach ($links as $sup) {
-                                $lines[] = "→ {$sup->name} | Plenty contact #{$sup->pivot->plenty_contact_id}";
+                            $lines = [];
+                            if ($tenant) {
+                                $lines[] = "Bayi: {$tenant->name}";
                             }
+                            if ($supplier) {
+                                $lines[] = "Tedarikçi: {$supplier->name}";
+                            }
+                            $lines[] = "Plenty contact: #{$record->plenty_contact_id}";
 
                             return implode("\n", $lines);
                         }),
                 ]),
 
-            Forms\Components\Section::make('Plenty B2B Müşterisine Eşle')
-                ->description('Bu mağazadan sipariş geldiğinde hangi tedarikçinin Plenty hesabında hangi B2B müşteriye fatura kesilecek. Seçtikten sonra kaydedin — bayi (tenant) otomatik oluşur.')
-                ->columns(2)
+            Forms\Components\Section::make('Bayi Eşleştirmesi')
+                ->description('Bu mağazadan sipariş geldiğinde hangi bayinin (Plenty B2B müşterisinin) hesabına fatura kesilecek. Dropdown\'da aktif tedarikçilerin B2B sınıflarındaki tüm müşteriler yüklü gelir.')
                 ->schema([
-                    Forms\Components\Select::make('mapping_supplier_id')
-                        ->label('Tedarikçi (Plenty kaynağı)')
-                        ->options(fn () => Supplier::where('status', 'active')->pluck('name', 'id')->all())
-                        ->live()
-                        ->required(false)
-                        ->placeholder('Tedarikçi seçin')
-                        ->helperText('Hangi tedarikçinin Plenty hesabını kullanacağız?')
-                        ->dehydrated(false)
-                        ->afterStateHydrated(function (Forms\Components\Select $component, ?ShopifyStore $record) {
-                            if (! $record || ! $record->tenant_id) {
-                                return;
-                            }
-                            // Mevcut eşleşmedeki tedarikçiyi ön-doldur
-                            $supplier = $record->tenant?->suppliers()->first();
-                            if ($supplier) {
-                                $component->state($supplier->id);
-                            }
-                        }),
-
-                    Forms\Components\Select::make('mapping_plenty_contact_id')
-                        ->label('Plenty B2B Müşterisi')
-                        ->placeholder('Tedarikçi seçin, sonra ara')
+                    Forms\Components\Select::make('mapping_bayi')
+                        ->label('Bayi')
+                        ->placeholder('Şirket adı veya e-posta ile ara...')
                         ->searchable()
                         ->dehydrated(false)
-                        ->helperText('Şirket adı, e-posta veya Plenty ID ile ara. Sadece B2B müşteriler.')
-                        ->getSearchResultsUsing(function (string $search, Forms\Get $get) {
-                            $supplierId = $get('mapping_supplier_id');
-                            if (! $supplierId) {
-                                return [];
-                            }
-                            $supplier = Supplier::find($supplierId);
-                            if (! $supplier) {
-                                return [];
-                            }
-
-                            try {
-                                $contacts = (new \App\Services\Plenty\PlentyClient($supplier))->listB2BContacts(200);
-                            } catch (\Throwable $e) {
-                                return [];
-                            }
-
+                        ->helperText('Sonuç formatı: "Şirket — e-posta (Tedarikçi #PlentyID)". Tedarikçi başına 200 sonuca kadar.')
+                        ->getSearchResultsUsing(function (string $search) {
                             $needle = mb_strtolower(trim($search));
+                            if (mb_strlen($needle) < 2) {
+                                return [];
+                            }
 
-                            return collect($contacts)
-                                ->filter(function ($c) use ($needle) {
-                                    if ($needle === '') {
-                                        return true;
+                            $isNumeric = ctype_digit($needle);
+                            $results = [];
+
+                            foreach (Supplier::where('status', 'active')->get() as $supplier) {
+                                $client = new \App\Services\Plenty\PlentyClient($supplier);
+                                $contacts = [];
+
+                                // 1) Sayı ise direkt Plenty contact ID lookup
+                                if ($isNumeric) {
+                                    try {
+                                        $one = $client->getContact((int) $needle);
+                                        if ($one) {
+                                            $contacts[] = [
+                                                'id' => (int) $one['id'],
+                                                'first_name' => $one['firstName'] ?? '',
+                                                'last_name' => $one['lastName'] ?? '',
+                                                'company' => $one['accounts'][0]['companyName'] ?? '',
+                                                'email' => $one['email'] ?? '',
+                                                'class_id' => (int) ($one['classId'] ?? 0),
+                                            ];
+                                        }
+                                    } catch (\Throwable $e) {
+                                        // ignore
                                     }
-                                    $haystack = mb_strtolower(
-                                        ($c['company'] ?? '').' '.
-                                        ($c['first_name'] ?? '').' '.
-                                        ($c['last_name'] ?? '').' '.
-                                        ($c['email'] ?? '').' '.
-                                        $c['id']
-                                    );
+                                }
 
-                                    return str_contains($haystack, $needle);
-                                })
-                                ->take(50)
-                                ->mapWithKeys(fn ($c) => [
-                                    $c['id'] => "{$c['company']} — {$c['email']} (#{$c['id']})",
-                                ])
-                                ->all();
+                                // 2) E-posta ile direkt Plenty arama (her class'a bakar)
+                                if (! $isNumeric) {
+                                    try {
+                                        $contacts = array_merge($contacts, $client->searchContactsByEmail($needle, 25));
+                                    } catch (\Throwable $e) {
+                                        // ignore
+                                    }
+                                }
+
+                                // 3) B2B class cache'inden de tara (şirket adı, email, id parça eşleşmeleri)
+                                try {
+                                    $cached = $client->listB2BContacts(1500);
+                                    foreach ($cached as $c) {
+                                        $haystack = mb_strtolower(
+                                            ($c['company'] ?? '').' '.
+                                            ($c['email'] ?? '').' '.
+                                            ($c['first_name'] ?? '').' '.
+                                            ($c['last_name'] ?? '').' '.
+                                            $c['id']
+                                        );
+                                        if (str_contains($haystack, $needle)) {
+                                            $contacts[] = $c;
+                                        }
+                                    }
+                                } catch (\Throwable $e) {
+                                    // ignore
+                                }
+
+                                // De-dupe by Plenty ID
+                                $seen = [];
+                                foreach ($contacts as $c) {
+                                    if (isset($seen[$c['id']])) {
+                                        continue;
+                                    }
+                                    $seen[$c['id']] = true;
+
+                                    $key = "{$supplier->id}:{$c['id']}";
+                                    $company = $c['company'] ?? '';
+                                    $email = $c['email'] ?? '';
+                                    $label = $company !== '' ? "{$company}" : "Plenty #{$c['id']}";
+                                    if ($email !== '') {
+                                        $label .= " — {$email}";
+                                    }
+                                    $results[$key] = "{$label} ({$supplier->name} #{$c['id']})";
+
+                                    if (count($results) >= 50) {
+                                        break 2;
+                                    }
+                                }
+                            }
+
+                            return $results;
                         })
-                        ->getOptionLabelUsing(function ($value, Forms\Get $get) {
-                            $supplierId = $get('mapping_supplier_id');
-                            if (! $supplierId || ! $value) {
+                        ->getOptionLabelUsing(function ($value) {
+                            if (! $value || ! str_contains($value, ':')) {
                                 return null;
                             }
+                            [$supplierId, $contactId] = explode(':', $value, 2);
                             $supplier = Supplier::find($supplierId);
                             if (! $supplier) {
-                                return null;
+                                return "Plenty #{$contactId}";
                             }
                             try {
-                                $contact = (new \App\Services\Plenty\PlentyClient($supplier))->getContact((int) $value);
+                                $contact = (new \App\Services\Plenty\PlentyClient($supplier))->getContact((int) $contactId);
                                 if (! $contact) {
-                                    return "Plenty #{$value}";
+                                    return "{$supplier->name} #{$contactId}";
                                 }
                                 $company = $contact['accounts'][0]['companyName'] ?? '';
                                 $email = $contact['email'] ?? '';
 
-                                return "{$company} — {$email} (#{$value})";
+                                return "{$company} — {$email} ({$supplier->name} #{$contactId})";
                             } catch (\Throwable $e) {
-                                return "Plenty #{$value}";
+                                return "{$supplier->name} #{$contactId}";
                             }
                         })
                         ->afterStateHydrated(function (Forms\Components\Select $component, ?ShopifyStore $record) {
@@ -161,12 +191,74 @@ class ShopifyStoreResource extends Resource
                                 return;
                             }
                             $supplier = $record->tenant?->suppliers()->first();
-                            if ($supplier) {
-                                $component->state($supplier->pivot->plenty_contact_id);
+                            if ($supplier && $supplier->pivot->plenty_contact_id) {
+                                $component->state("{$supplier->id}:{$supplier->pivot->plenty_contact_id}");
                             }
                         }),
                 ])
                 ->hiddenOn('create'),
+
+            Forms\Components\Section::make('Plenty Sipariş Ayarları')
+                ->description('Bu mağazadan gelen siparişler Plenty Auftrag olarak düşerken kullanılacak ayarlar. Bayinin satış fiyatı tipi farklı olabilir (Level 5, B2B Standard, vb.) — burada elle seçiyorsun.')
+                ->columns(2)
+                ->hiddenOn('create')
+                ->schema([
+                    Forms\Components\Select::make('plenty_sales_price_id')
+                        ->label('Satış Fiyatı Tipi')
+                        ->options(function (?ShopifyStore $record) {
+                            $supplier = $record?->supplier ?? $record?->tenant?->suppliers()->first();
+                            if (! $supplier) {
+                                return [];
+                            }
+
+                            return $supplier
+                                ->referencesOfKind(\App\Models\SupplierReference::KIND_SALES_PRICE)
+                                ->orderBy('external_id')
+                                ->get()
+                                ->mapWithKeys(fn ($r) => [(int) $r->external_id => $r->label])
+                                ->all();
+                        })
+                        ->searchable()
+                        ->placeholder('Bayinin fiyat tipini seçin (örn. Level 5)')
+                        ->helperText('Bu mağazadan gelen siparişlerin Plenty\'deki birim fiyatı bu tipten alınır. SKU başına Plenty\'den canlı çekilir.'),
+
+                    Forms\Components\Select::make('plenty_warehouse_id')
+                        ->label('Depo')
+                        ->options(function (?ShopifyStore $record) {
+                            $supplier = $record?->supplier ?? $record?->tenant?->suppliers()->first();
+                            if (! $supplier) {
+                                return [];
+                            }
+
+                            return $supplier
+                                ->referencesOfKind(\App\Models\SupplierReference::KIND_WAREHOUSE)
+                                ->orderBy('external_id')
+                                ->get()
+                                ->mapWithKeys(fn ($r) => [(int) $r->external_id => "#{$r->external_id} — {$r->label}"])
+                                ->all();
+                        })
+                        ->searchable()
+                        ->placeholder('Sevkıyat deposu (örn. Hilden)'),
+
+                    Forms\Components\Select::make('plenty_order_status_id')
+                        ->label('Yeni Sipariş Statüsü')
+                        ->options(function (?ShopifyStore $record) {
+                            $supplier = $record?->supplier ?? $record?->tenant?->suppliers()->first();
+                            if (! $supplier) {
+                                return [];
+                            }
+
+                            return $supplier
+                                ->referencesOfKind(\App\Models\SupplierReference::KIND_ORDER_STATUS)
+                                ->orderBy('external_id')
+                                ->get()
+                                ->mapWithKeys(fn ($r) => [(string) $r->external_id => $r->label])
+                                ->all();
+                        })
+                        ->searchable()
+                        ->placeholder('Yeni Auftrag\'lar bu statüde açılır')
+                        ->helperText('Boş bırakılırsa tedarikçinin default sipariş statüsü kullanılır.'),
+                ]),
 
             Forms\Components\Section::make('Teknik Bilgi')
                 ->columns(2)

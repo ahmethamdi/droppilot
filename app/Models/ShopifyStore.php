@@ -20,6 +20,11 @@ class ShopifyStore extends Authenticatable implements IShopModel
     // Paketin Shop trait'i: `name` = shop domain, `password` = access token.
     protected $fillable = [
         'tenant_id',
+        'supplier_id',
+        'plenty_contact_id',
+        'plenty_sales_price_id',
+        'plenty_warehouse_id',
+        'plenty_order_status_id',
         'name',
         'email',
         'password',
@@ -53,5 +58,10 @@ class ShopifyStore extends Authenticatable implements IShopModel
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
     }
 }

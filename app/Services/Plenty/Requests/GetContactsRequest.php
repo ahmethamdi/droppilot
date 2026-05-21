@@ -17,6 +17,7 @@ class GetContactsRequest extends Request
         protected int $page = 1,
         protected int $itemsPerPage = 50,
         protected ?int $classId = null,
+        protected ?string $contactEmail = null,
     ) {}
 
     public function resolveEndpoint(): string
@@ -34,6 +35,10 @@ class GetContactsRequest extends Request
 
         if ($this->classId !== null) {
             $q['classId'] = $this->classId;
+        }
+
+        if ($this->contactEmail !== null && $this->contactEmail !== '') {
+            $q['contactEmail'] = $this->contactEmail;
         }
 
         return $q;
