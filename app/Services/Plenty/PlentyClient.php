@@ -648,6 +648,11 @@ class PlentyClient
                 $isPackage = $manufacturerName !== null
                     && mb_stripos($manufacturerName, 'paket') !== false;
 
+                // SADECE PAKET ÜRÜNLERİ DB'YE KAYDET — tekliler atlanır
+                if (! $isPackage) {
+                    continue;
+                }
+
                 $product = Product::updateOrCreate(
                     [
                         'supplier_id' => $this->supplier->id,

@@ -76,11 +76,6 @@ class ProductResource extends Resource
                     ->sortable()
                     ->limit(60)
                     ->weight('medium'),
-                Tables\Columns\TextColumn::make('is_package')
-                    ->label('Tip')
-                    ->badge()
-                    ->state(fn (Product $record) => $record->is_package ? 'Paket' : 'Tekli')
-                    ->color(fn (Product $record) => $record->is_package ? 'success' : 'gray'),
                 Tables\Columns\TextColumn::make('manufacturer_name')
                     ->label('Üretici')
                     ->limit(30)
@@ -123,12 +118,6 @@ class ProductResource extends Resource
                 Tables\Filters\SelectFilter::make('supplier_id')
                     ->label('Tedarikçi')
                     ->relationship('supplier', 'name'),
-                Tables\Filters\TernaryFilter::make('is_package')
-                    ->label('Paket / Tekli')
-                    ->placeholder('Hepsi')
-                    ->trueLabel('Sadece paketler')
-                    ->falseLabel('Sadece tekliler')
-                    ->default(true),
             ])
             ->headerActions([
                 Tables\Actions\Action::make('sync_from_plenty')
@@ -141,14 +130,10 @@ class ProductResource extends Resource
                             ->options(fn () => Supplier::where('status', 'active')->pluck('name', 'id'))
                             ->required(),
                         Forms\Components\TextInput::make('max_items')
-                            ->label('Maksimum ürün sayısı')
+                            ->label('Taranacak ürün sayısı (üst sınır)')
                             ->numeric()
-                            ->default(500)
-                            ->helperText('Bütün katalog ~9500 ürün. Variation+fiyat+görsel de çekiliyor (her ürün ≈ 0.5-1sn).'),
-                        Forms\Components\Toggle::make('packages_only')
-                            ->label('Sadece paket variation\'larını çek')
-                            ->default(true)
-                            ->helperText('Hız için: tekli ürünler için variation çekme atlanır. Paketler hep çekilir.'),
+                            ->default(2000)
+                            ->helperText('Plenty\'de ~9500 ürün taranır; sadece "Paket" üreticili olanlar DB\'ye yazılır.'),
                     ])
                     ->action(function (array $data) {
                         $supplier = Supplier::find($data['supplier_id']);
@@ -160,7 +145,7 @@ class ProductResource extends Resource
                         try {
                             $result = (new PlentyClient($supplier))->syncProducts(
                                 (int) $data['max_items'],
-                                (bool) ($data['packages_only'] ?? true),
+                                true, // sadece paket variation'lar çekilir
                             );
                             Notification::make()
                                 ->title('Senkron tamam')
@@ -278,7 +263,7 @@ class ProductResource extends Resource
             ->emptyStateHeading('Henüz katalog senkronize edilmedi')
             ->emptyStateDescription('Yukarıdaki "Plenty\'den Katalogu Senkronize Et" butonuna bas.')
             ->emptyStateIcon('heroicon-o-cube')
-            ->modifyQueryUsing(fn ($query) => $query->orderByDesc('is_package')->orderBy('plenty_item_id'));
+            ->modifyQueryUsing(fn ($query) => $query->where('is_package', true)->orderBy('plenty_item_id'));
     }
 
     public static function getPages(): array
