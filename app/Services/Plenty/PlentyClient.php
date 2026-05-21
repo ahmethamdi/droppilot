@@ -613,19 +613,22 @@ class PlentyClient
     }
 
     /**
-     * Plenty katalogundan ürünleri (items) DropPilot DB'ye senkronize et.
+     * Plenty katalogundan ürünleri (items) + variations + fiyat + image
+     * DropPilot DB'ye senkronize et.
      *
-     * Performans: 9000+ ürün için max ~40 sayfa × 250 = ~10 saniye.
-     * Sadece items meta'sı çekilir; variations lazy (kullanıcı detaya bakınca).
+     * Performans: 500 ürün ≈ 5-10dk (her ürün için 2 ek API: variations + images).
+     * $packagesOnly=true ise sadece is_package=true olan ürünler için
+     * variation'ları çeker (hızlanır, demo için yeterli).
      *
-     * @return array{processed:int,created:int,updated:int}
+     * @return array{processed:int,created:int,updated:int,variations_synced:int}
      */
-    public function syncProducts(int $maxItems = 10000): array
+    public function syncProducts(int $maxItems = 10000, bool $packagesOnly = false): array
     {
         $manufacturers = $this->listManufacturers(); // id => name
         $created = 0;
         $updated = 0;
         $processed = 0;
+        $variationsSynced = 0;
         $page = 1;
 
         while ($processed < $maxItems) {
@@ -670,6 +673,16 @@ class PlentyClient
                 $product->wasRecentlyCreated ? $created++ : $updated++;
                 $processed++;
 
+                // Her ürün için variation + fiyat + image çek
+                // $packagesOnly true ise sadece paket olanlar için yap (hız için)
+                if (! $packagesOnly || $isPackage) {
+                    try {
+                        $variationsSynced += $this->syncItemVariations($product);
+                    } catch (\Throwable $e) {
+                        // Tek bir variation hatası tüm sync'i durdurmasın
+                    }
+                }
+
                 if ($processed >= $maxItems) {
                     break;
                 }
@@ -688,6 +701,7 @@ class PlentyClient
             'processed' => $processed,
             'created' => $created,
             'updated' => $updated,
+            'variations_synced' => $variationsSynced,
         ];
     }
 

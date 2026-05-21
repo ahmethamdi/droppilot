@@ -101,7 +101,9 @@ class ProductResource extends Resource
                     ->label('Fiyat')
                     ->state(fn (Product $record) => $record->variations()->first()?->retail_price)
                     ->money('EUR')
-                    ->placeholder('—'),
+                    ->placeholder('—')
+                    ->weight('semibold')
+                    ->color('success'),
                 Tables\Columns\TextColumn::make('mainVariationStock')
                     ->label('Stok')
                     ->state(fn (Product $record) => $record->variations()->first()?->stock_net)
@@ -142,7 +144,11 @@ class ProductResource extends Resource
                             ->label('Maksimum ürün sayısı')
                             ->numeric()
                             ->default(500)
-                            ->helperText('Bütün katalog ~9500 ürün. Test için 100-500 ile başla.'),
+                            ->helperText('Bütün katalog ~9500 ürün. Variation+fiyat+görsel de çekiliyor (her ürün ≈ 0.5-1sn).'),
+                        Forms\Components\Toggle::make('packages_only')
+                            ->label('Sadece paket variation\'larını çek')
+                            ->default(true)
+                            ->helperText('Hız için: tekli ürünler için variation çekme atlanır. Paketler hep çekilir.'),
                     ])
                     ->action(function (array $data) {
                         $supplier = Supplier::find($data['supplier_id']);
@@ -152,14 +158,18 @@ class ProductResource extends Resource
                             return;
                         }
                         try {
-                            $result = (new PlentyClient($supplier))->syncProducts((int) $data['max_items']);
+                            $result = (new PlentyClient($supplier))->syncProducts(
+                                (int) $data['max_items'],
+                                (bool) ($data['packages_only'] ?? true),
+                            );
                             Notification::make()
                                 ->title('Senkron tamam')
                                 ->body(\sprintf(
-                                    'İşlenen: %d  •  Yeni: %d  •  Güncellenen: %d',
+                                    'İşlenen: %d  •  Yeni: %d  •  Güncellenen: %d  •  Variation: %d',
                                     $result['processed'],
                                     $result['created'],
                                     $result['updated'],
+                                    $result['variations_synced'] ?? 0,
                                 ))
                                 ->success()
                                 ->send();
@@ -268,7 +278,7 @@ class ProductResource extends Resource
             ->emptyStateHeading('Henüz katalog senkronize edilmedi')
             ->emptyStateDescription('Yukarıdaki "Plenty\'den Katalogu Senkronize Et" butonuna bas.')
             ->emptyStateIcon('heroicon-o-cube')
-            ->defaultSort('plenty_item_id', 'asc');
+            ->modifyQueryUsing(fn ($query) => $query->orderByDesc('is_package')->orderBy('plenty_item_id'));
     }
 
     public static function getPages(): array
