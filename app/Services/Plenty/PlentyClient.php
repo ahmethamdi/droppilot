@@ -6,9 +6,14 @@ use App\Models\Supplier;
 use App\Models\SupplierReference;
 use App\Models\SkuLookup;
 use App\Services\Plenty\Requests\GetContactAddressesRequest;
+use App\Models\Product;
+use App\Models\ProductVariation;
 use App\Services\Plenty\Requests\GetContactClassesRequest;
 use App\Services\Plenty\Requests\GetContactRequest;
 use App\Services\Plenty\Requests\GetContactsRequest;
+use App\Services\Plenty\Requests\GetItemImagesRequest;
+use App\Services\Plenty\Requests\GetItemsRequest;
+use App\Services\Plenty\Requests\GetItemVariationsRequest;
 use App\Services\Plenty\Requests\GetOrderStatusesRequest;
 use App\Services\Plenty\Requests\GetReferrersRequest;
 use App\Services\Plenty\Requests\GetSalesPricesRequest;
@@ -565,5 +570,151 @@ class PlentyClient
             'last_order_at' => $e['lastOrderAt'] ?? null,
             'created_at' => $e['createdAt'] ?? null,
         ];
+    }
+
+    /**
+     * Plenty katalogundan ürünleri (items) DropPilot DB'ye senkronize et.
+     *
+     * Performans: 9000+ ürün için max ~40 sayfa × 250 = ~10 saniye.
+     * Sadece items meta'sı çekilir; variations lazy (kullanıcı detaya bakınca).
+     *
+     * @return array{processed:int,created:int,updated:int}
+     */
+    public function syncProducts(int $maxItems = 10000): array
+    {
+        $created = 0;
+        $updated = 0;
+        $processed = 0;
+        $page = 1;
+
+        while ($processed < $maxItems) {
+            $response = $this->connector()->send(new GetItemsRequest($page, 250));
+            $response->throw();
+            $body = $response->json();
+            $entries = $body['entries'] ?? [];
+
+            if (empty($entries)) {
+                break;
+            }
+
+            foreach ($entries as $item) {
+                $texts = $item['texts'][0] ?? [];
+
+                $product = Product::updateOrCreate(
+                    [
+                        'supplier_id' => $this->supplier->id,
+                        'plenty_item_id' => (int) $item['id'],
+                    ],
+                    [
+                        'main_variation_id' => $item['mainVariationId'] ?? null,
+                        'manufacturer_id' => $item['manufacturerId'] ?? null,
+                        'item_type_id' => null,
+                        'name' => $texts['name1'] ?? null,
+                        'name2' => $texts['name2'] ?? null,
+                        'short_description' => $texts['shortDescription'] ?? null,
+                        'description' => $texts['description'] ?? null,
+                        'meta_description' => $texts['metaDescription'] ?? null,
+                        'payload' => $item,
+                        'plenty_updated_at' => $item['updatedAt'] ?? null,
+                        'synced_at' => now(),
+                    ],
+                );
+
+                $product->wasRecentlyCreated ? $created++ : $updated++;
+                $processed++;
+
+                if ($processed >= $maxItems) {
+                    break;
+                }
+            }
+
+            if (! empty($body['isLastPage'])) {
+                break;
+            }
+            $page++;
+            if ($page > 100) {
+                break;
+            }
+        }
+
+        return [
+            'processed' => $processed,
+            'created' => $created,
+            'updated' => $updated,
+        ];
+    }
+
+    /**
+     * Tek bir Plenty item'in variations'larını DB'ye yaz (lazy load).
+     * Kullanıcı bir ürünün detayına bakınca çağrılır.
+     *
+     * @return int variation count
+     */
+    public function syncItemVariations(Product $product): int
+    {
+        $response = $this->connector()->send(new GetItemVariationsRequest((int) $product->plenty_item_id));
+        $response->throw();
+
+        $entries = $response->json('entries') ?? [];
+        $count = 0;
+
+        // Item-level images: tek API çağrısı, tüm varyasyonlarda paylaşılır
+        $imageUrl = null;
+        try {
+            $imgResponse = $this->connector()->send(new GetItemImagesRequest((int) $product->plenty_item_id));
+            $imgResponse->throw();
+            $images = $imgResponse->json();
+            if (\is_array($images) && ! empty($images)) {
+                // İlk image'in full URL'i (Shopify productCreate için yeterli boyut)
+                $imageUrl = $images[0]['url'] ?? $images[0]['urlMiddle'] ?? null;
+            }
+        } catch (\Throwable $e) {
+            // image yoksa devam et
+        }
+
+        foreach ($entries as $v) {
+            // Retail price: salesPriceId=1 (Aktionspreis Webshop)
+            $retailPrice = null;
+            foreach ($v['variationSalesPrices'] ?? [] as $vsp) {
+                if ((int) ($vsp['salesPriceId'] ?? 0) === 1) {
+                    $retailPrice = (float) $vsp['price'];
+                    break;
+                }
+            }
+
+            // Stock toplamı
+            $stockNet = null;
+            if (isset($v['stock']) && \is_array($v['stock'])) {
+                $stockNet = collect($v['stock'])->sum('netStock');
+            }
+
+            ProductVariation::updateOrCreate(
+                [
+                    'product_id' => $product->id,
+                    'plenty_variation_id' => (int) $v['id'],
+                ],
+                [
+                    'sku' => $v['number'] ?? null,
+                    'model' => $v['model'] ?? null,
+                    'name' => $v['name'] ?? null,
+                    'is_main' => (bool) ($v['isMain'] ?? false),
+                    'is_active' => (bool) ($v['isActive'] ?? false),
+                    'retail_price' => $retailPrice,
+                    'retail_price_source_id' => $retailPrice !== null ? 1 : null,
+                    'currency' => 'EUR',
+                    'stock_net' => $stockNet,
+                    'weight_g' => $v['weightG'] ?? null,
+                    'width_mm' => $v['widthMM'] ?? null,
+                    'length_mm' => $v['lengthMM'] ?? null,
+                    'height_mm' => $v['heightMM'] ?? null,
+                    'image_url' => $imageUrl,
+                    'payload' => $v,
+                    'synced_at' => now(),
+                ],
+            );
+            $count++;
+        }
+
+        return $count;
     }
 }

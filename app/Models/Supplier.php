@@ -82,6 +82,11 @@ class Supplier extends Model
         return $this->hasMany(SupplierReference::class);
     }
 
+    public function products(): HasMany
+    {
+        return $this->hasMany(Product::class);
+    }
+
     public function referencesOfKind(string $kind): HasMany
     {
         return $this->references()->where('kind', $kind);

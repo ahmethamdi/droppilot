@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 44" width="200" height="44">
+  <defs>
+    <linearGradient id="dpGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+    <linearGradient id="dpTextGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#0f766e"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(2,2)">
+    <rect x="0" y="0" width="36" height="36" rx="10" fill="url(#dpGrad)"/>
+    <g transform="translate(8,8)" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 0 L0 5 v10 l10 5 10-5 V5 z"/>
+      <path d="M0 5 L10 10 L20 5"/>
+      <path d="M10 10 V20"/>
+    </g>
+  </g>
+  <text x="48" y="29" font-family="Inter, system-ui, sans-serif" font-size="20" font-weight="700" fill="url(#dpTextGrad)" letter-spacing="-0.3">DropPilot</text>
+</svg>
