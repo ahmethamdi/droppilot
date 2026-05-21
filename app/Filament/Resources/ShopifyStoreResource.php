@@ -45,46 +45,128 @@ class ShopifyStoreResource extends Resource
                         ->label('Mağaza E-postası')
                         ->disabled(),
 
-                    Forms\Components\Select::make('tenant_id')
-                        ->label('Bayi (Tenant)')
-                        ->relationship('tenant', 'name')
-                        ->searchable()
-                        ->preload()
-                        ->placeholder('Bu mağaza henüz bir bayiye bağlı değil')
-                        ->helperText('Bu mağazadan gelen siparişler bu bayinin Plenty hesabına yönlendirilecek.'),
-
                     Forms\Components\DateTimePicker::make('installed_at')
                         ->label('Yüklenme Zamanı')
                         ->disabled(),
-                ]),
 
-            Forms\Components\Section::make('Plenty Eşleştirmesi')
-                ->description('Bu mağazadan sipariş geldiğinde hangi tedarikçinin Plenty hesabında hangi müşteriye fatura kesilecek.')
-                ->columns(1)
-                ->schema([
-                    Forms\Components\Placeholder::make('mapping_info')
-                        ->label('')
+                    Forms\Components\Placeholder::make('current_link')
+                        ->label('Mevcut Eşleşme')
                         ->content(function (?ShopifyStore $record) {
                             if (! $record || ! $record->tenant_id) {
-                                return 'Önce bir bayi seçin (yukarıda), sonra bayinin tedarikçilerinden hangisinin kullanılacağı görünür.';
+                                return '— Henüz Plenty müşterisine eşlenmemiş.';
+                            }
+                            $tenant = $record->tenant;
+                            $links = $tenant->suppliers()->get();
+                            $lines = ["Bayi: {$tenant->name}"];
+                            foreach ($links as $sup) {
+                                $lines[] = "→ {$sup->name} | Plenty contact #{$sup->pivot->plenty_contact_id}";
                             }
 
-                            $links = $record->tenant->suppliers()->get();
-                            if ($links->isEmpty()) {
-                                return 'Bu bayi henüz hiçbir tedarikçi ile bağlı değil. Önce Tenants → düzenle → "Bağlı Tedarikçiler" sekmesinden tedarikçi bağlayın.';
+                            return implode("\n", $lines);
+                        }),
+                ]),
+
+            Forms\Components\Section::make('Plenty B2B Müşterisine Eşle')
+                ->description('Bu mağazadan sipariş geldiğinde hangi tedarikçinin Plenty hesabında hangi B2B müşteriye fatura kesilecek. Seçtikten sonra kaydedin — bayi (tenant) otomatik oluşur.')
+                ->columns(2)
+                ->schema([
+                    Forms\Components\Select::make('mapping_supplier_id')
+                        ->label('Tedarikçi (Plenty kaynağı)')
+                        ->options(fn () => Supplier::where('status', 'active')->pluck('name', 'id')->all())
+                        ->live()
+                        ->required(false)
+                        ->placeholder('Tedarikçi seçin')
+                        ->helperText('Hangi tedarikçinin Plenty hesabını kullanacağız?')
+                        ->dehydrated(false)
+                        ->afterStateHydrated(function (Forms\Components\Select $component, ?ShopifyStore $record) {
+                            if (! $record || ! $record->tenant_id) {
+                                return;
+                            }
+                            // Mevcut eşleşmedeki tedarikçiyi ön-doldur
+                            $supplier = $record->tenant?->suppliers()->first();
+                            if ($supplier) {
+                                $component->state($supplier->id);
+                            }
+                        }),
+
+                    Forms\Components\Select::make('mapping_plenty_contact_id')
+                        ->label('Plenty B2B Müşterisi')
+                        ->placeholder('Tedarikçi seçin, sonra ara')
+                        ->searchable()
+                        ->dehydrated(false)
+                        ->helperText('Şirket adı, e-posta veya Plenty ID ile ara. Sadece B2B müşteriler.')
+                        ->getSearchResultsUsing(function (string $search, Forms\Get $get) {
+                            $supplierId = $get('mapping_supplier_id');
+                            if (! $supplierId) {
+                                return [];
+                            }
+                            $supplier = Supplier::find($supplierId);
+                            if (! $supplier) {
+                                return [];
                             }
 
-                            $lines = $links->map(function ($supplier) {
-                                $contactId = $supplier->pivot->plenty_contact_id ?? '—';
-                                $status = $supplier->pivot->status ?? '—';
+                            try {
+                                $contacts = (new \App\Services\Plenty\PlentyClient($supplier))->listB2BContacts(200);
+                            } catch (\Throwable $e) {
+                                return [];
+                            }
 
-                                return "• {$supplier->name} → Plenty contact #{$contactId} ({$status})";
-                            })->implode("\n");
+                            $needle = mb_strtolower(trim($search));
 
-                            return $lines;
+                            return collect($contacts)
+                                ->filter(function ($c) use ($needle) {
+                                    if ($needle === '') {
+                                        return true;
+                                    }
+                                    $haystack = mb_strtolower(
+                                        ($c['company'] ?? '').' '.
+                                        ($c['first_name'] ?? '').' '.
+                                        ($c['last_name'] ?? '').' '.
+                                        ($c['email'] ?? '').' '.
+                                        $c['id']
+                                    );
+
+                                    return str_contains($haystack, $needle);
+                                })
+                                ->take(50)
+                                ->mapWithKeys(fn ($c) => [
+                                    $c['id'] => "{$c['company']} — {$c['email']} (#{$c['id']})",
+                                ])
+                                ->all();
+                        })
+                        ->getOptionLabelUsing(function ($value, Forms\Get $get) {
+                            $supplierId = $get('mapping_supplier_id');
+                            if (! $supplierId || ! $value) {
+                                return null;
+                            }
+                            $supplier = Supplier::find($supplierId);
+                            if (! $supplier) {
+                                return null;
+                            }
+                            try {
+                                $contact = (new \App\Services\Plenty\PlentyClient($supplier))->getContact((int) $value);
+                                if (! $contact) {
+                                    return "Plenty #{$value}";
+                                }
+                                $company = $contact['accounts'][0]['companyName'] ?? '';
+                                $email = $contact['email'] ?? '';
+
+                                return "{$company} — {$email} (#{$value})";
+                            } catch (\Throwable $e) {
+                                return "Plenty #{$value}";
+                            }
+                        })
+                        ->afterStateHydrated(function (Forms\Components\Select $component, ?ShopifyStore $record) {
+                            if (! $record || ! $record->tenant_id) {
+                                return;
+                            }
+                            $supplier = $record->tenant?->suppliers()->first();
+                            if ($supplier) {
+                                $component->state($supplier->pivot->plenty_contact_id);
+                            }
                         }),
                 ])
-                ->collapsed(false),
+                ->hiddenOn('create'),
 
             Forms\Components\Section::make('Teknik Bilgi')
                 ->columns(2)
