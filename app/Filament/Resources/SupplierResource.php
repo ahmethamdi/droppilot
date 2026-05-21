@@ -86,10 +86,10 @@ class SupplierResource extends Resource
                         ->label('API Şifresi')
                         ->password()
                         ->revealable()
-                        ->required()
+                        ->required(fn (string $operation) => $operation === 'create')
                         ->autocomplete('new-password')
                         ->dehydrated(fn ($state) => filled($state))
-                        ->helperText('Düzenlemede boş bırakılırsa eski şifre korunur.'),
+                        ->helperText('Edit\'te otomatik dolu gelir. Değiştirmek istemiyorsan dokunma.'),
                 ]),
 
             Forms\Components\Section::make('Varsayılan Plenty Referansları')
