@@ -85,7 +85,7 @@ class PushOrderToPlenty
                 }
 
                 // Bu mağazanın sales_price_id'sinden fiyat çek
-                $priceForStore = $this->resolveStorePrice($lookup, $store->plenty_sales_price_id, $client, $sku);
+                $priceForStore = $this->resolveStorePrice($lookup, $store->plenty_sales_price_id, $sku);
 
                 $orderItems[] = [
                     'typeId' => 1, // variation
@@ -192,7 +192,7 @@ class PushOrderToPlenty
      * Lookup zaten cache'lenmiş price'a sahip ama o cache supplier->default_sales_price_id baz alır.
      * Bu yüzden payload'dan tekrar parse ediyoruz.
      */
-    protected function resolveStorePrice(array $lookup, int $salesPriceId, PlentyClient $client, string $sku): float
+    protected function resolveStorePrice(array $lookup, int $salesPriceId, string $sku): float
     {
         $payload = $lookup['cache']->payload ?? [];
 
@@ -212,27 +212,40 @@ class PushOrderToPlenty
 
     /**
      * Contact'ın varsayılan Rechnungsadresse'sini bul.
-     * İlk billing address (typeId=1) kullanılır.
+     *
+     * Plenty endpoint /rest/accounts/contacts/{id}/addresses?typeId=1 filtresi
+     * GÜVENİLİR DEĞİL — tüm adresleri döner. O yüzden contactRelations array'i
+     * içinden ilgili contact için typeId=1 (Rechnung) olan eşleşmeyi elle buluyoruz.
+     * isPrimary=true varsa onu önceliklendirip seçer.
      */
     protected function resolveBillingAddressId(PlentyClient $client, int $contactId): int
     {
-        $addresses = $client->getContactAddresses($contactId, 1); // typeId=1 = billing
-        if (empty($addresses)) {
-            // typeId filter çalışmıyorsa tüm adresleri al, ilk billing'i bul
-            $all = $client->getContactAddresses($contactId, null);
-            foreach ($all as $a) {
-                $rel = $a['contactRelations'][0]['typeId'] ?? null;
-                if ((int) $rel === 1) {
-                    return (int) $a['id'];
+        $addresses = $client->getContactAddresses($contactId, null);
+
+        $billingPrimary = null;
+        $billingAny = null;
+
+        foreach ($addresses as $a) {
+            foreach ($a['contactRelations'] ?? [] as $rel) {
+                if ((int) ($rel['contactId'] ?? 0) !== $contactId) {
+                    continue;
                 }
+                if ((int) ($rel['typeId'] ?? 0) !== 1) {
+                    continue;
+                }
+                if (! empty($rel['isPrimary'])) {
+                    $billingPrimary = (int) $a['id'];
+                }
+                $billingAny ??= (int) $a['id'];
             }
-            if (! empty($all)) {
-                return (int) $all[0]['id'];
-            }
-            throw new RuntimeException("Plenty contact {$contactId} için billing address bulunamadı.");
         }
 
-        return (int) $addresses[0]['id'];
+        $id = $billingPrimary ?? $billingAny;
+        if (! $id) {
+            throw new RuntimeException("Plenty contact {$contactId} için Rechnungsadresse (typeId=1) bulunamadı. Önce Plenty'de billing adres tanımlayın.");
+        }
+
+        return $id;
     }
 
     /**
