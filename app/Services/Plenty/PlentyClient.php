@@ -14,6 +14,7 @@ use App\Services\Plenty\Requests\GetContactsRequest;
 use App\Services\Plenty\Requests\GetItemImagesRequest;
 use App\Services\Plenty\Requests\GetItemsRequest;
 use App\Services\Plenty\Requests\GetItemVariationsRequest;
+use App\Services\Plenty\Requests\GetManufacturersRequest;
 use App\Services\Plenty\Requests\GetOrderStatusesRequest;
 use App\Services\Plenty\Requests\GetReferrersRequest;
 use App\Services\Plenty\Requests\GetSalesPricesRequest;
@@ -573,6 +574,45 @@ class PlentyClient
     }
 
     /**
+     * Tüm Plenty manufacturer'larını ID->name map olarak döndür (cache'li).
+     * Plenty UI'da "ELFBAR V1 0% Paket" gibi paket manufacturer'ları var;
+     * isminde "Paket" kelimesi geçenleri Shopify B2B paket olarak işaretliyoruz.
+     *
+     * @return array<int, string>  manufacturerId => name
+     */
+    public function listManufacturers(): array
+    {
+        return \Illuminate\Support\Facades\Cache::remember(
+            "plenty:manufacturers:supplier:{$this->supplier->id}",
+            now()->addMinutes(30),
+            function () {
+                $out = [];
+                $page = 1;
+                while (true) {
+                    $response = $this->connector()->send(new GetManufacturersRequest($page, 250));
+                    $response->throw();
+                    $body = $response->json();
+                    $entries = $body['entries'] ?? [];
+
+                    foreach ($entries as $m) {
+                        $out[(int) $m['id']] = trim((string) ($m['name'] ?? ''));
+                    }
+
+                    if (! empty($body['isLastPage']) || empty($entries)) {
+                        break;
+                    }
+                    $page++;
+                    if ($page > 20) {
+                        break;
+                    }
+                }
+
+                return $out;
+            },
+        );
+    }
+
+    /**
      * Plenty katalogundan ürünleri (items) DropPilot DB'ye senkronize et.
      *
      * Performans: 9000+ ürün için max ~40 sayfa × 250 = ~10 saniye.
@@ -582,6 +622,7 @@ class PlentyClient
      */
     public function syncProducts(int $maxItems = 10000): array
     {
+        $manufacturers = $this->listManufacturers(); // id => name
         $created = 0;
         $updated = 0;
         $processed = 0;
@@ -599,6 +640,10 @@ class PlentyClient
 
             foreach ($entries as $item) {
                 $texts = $item['texts'][0] ?? [];
+                $manufacturerId = $item['manufacturerId'] ?? null;
+                $manufacturerName = $manufacturerId ? ($manufacturers[$manufacturerId] ?? null) : null;
+                $isPackage = $manufacturerName !== null
+                    && mb_stripos($manufacturerName, 'paket') !== false;
 
                 $product = Product::updateOrCreate(
                     [
@@ -607,7 +652,9 @@ class PlentyClient
                     ],
                     [
                         'main_variation_id' => $item['mainVariationId'] ?? null,
-                        'manufacturer_id' => $item['manufacturerId'] ?? null,
+                        'manufacturer_id' => $manufacturerId,
+                        'manufacturer_name' => $manufacturerName,
+                        'is_package' => $isPackage,
                         'item_type_id' => null,
                         'name' => $texts['name1'] ?? null,
                         'name2' => $texts['name2'] ?? null,

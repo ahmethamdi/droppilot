@@ -4,14 +4,17 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Product;
+use App\Models\ShopifyStore;
 use App\Models\Supplier;
 use App\Services\Plenty\PlentyClient;
+use App\Services\Shopify\PushProductToShopify;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 
 class ProductResource extends Resource
 {
@@ -73,6 +76,21 @@ class ProductResource extends Resource
                     ->sortable()
                     ->limit(60)
                     ->weight('medium'),
+                Tables\Columns\TextColumn::make('is_package')
+                    ->label('Tip')
+                    ->badge()
+                    ->state(fn (Product $record) => $record->is_package ? 'Paket' : 'Tekli')
+                    ->color(fn (Product $record) => $record->is_package ? 'success' : 'gray'),
+                Tables\Columns\TextColumn::make('manufacturer_name')
+                    ->label('Üretici')
+                    ->limit(30)
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('pushedTo_count')
+                    ->label('Aktarıldı')
+                    ->counts('pushedTo')
+                    ->badge()
+                    ->color(fn ($state) => $state > 0 ? 'success' : 'gray')
+                    ->placeholder('—'),
                 Tables\Columns\TextColumn::make('mainVariationSku')
                     ->label('SKU')
                     ->state(fn (Product $record) => $record->variations()->first()?->sku)
@@ -103,6 +121,12 @@ class ProductResource extends Resource
                 Tables\Filters\SelectFilter::make('supplier_id')
                     ->label('Tedarikçi')
                     ->relationship('supplier', 'name'),
+                Tables\Filters\TernaryFilter::make('is_package')
+                    ->label('Paket / Tekli')
+                    ->placeholder('Hepsi')
+                    ->trueLabel('Sadece paketler')
+                    ->falseLabel('Sadece tekliler')
+                    ->default(true),
             ])
             ->headerActions([
                 Tables\Actions\Action::make('sync_from_plenty')
@@ -174,6 +198,71 @@ class ProductResource extends Resource
                         }),
 
                     Tables\Actions\ViewAction::make(),
+                ]),
+            ])
+            ->bulkActions([
+                Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\BulkAction::make('push_to_shopify')
+                        ->label('Seçilenleri Shopify\'a Aktar')
+                        ->icon('heroicon-o-arrow-up-tray')
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->modalHeading('Shopify\'a Aktar')
+                        ->modalDescription('Seçili ürünleri seçilen mağazaya gönder. Aynı SKU zaten varsa Shopify hata verebilir — atlanır.')
+                        ->form([
+                            Forms\Components\Select::make('shopify_store_id')
+                                ->label('Hedef Shopify Mağazası')
+                                ->options(fn () => ShopifyStore::query()
+                                    ->whereNotNull('password')
+                                    ->get()
+                                    ->mapWithKeys(fn ($s) => [$s->id => $s->name.($s->tenant ? " — {$s->tenant->name}" : '')])
+                                    ->all())
+                                ->required()
+                                ->searchable(),
+                        ])
+                        ->action(function (Collection $records, array $data) {
+                            $store = ShopifyStore::find($data['shopify_store_id']);
+                            if (! $store) {
+                                Notification::make()->title('Mağaza bulunamadı')->danger()->send();
+
+                                return;
+                            }
+
+                            $pusher = new PushProductToShopify;
+                            $success = 0;
+                            $failed = 0;
+                            $skipped = 0;
+                            $errors = [];
+
+                            foreach ($records as $product) {
+                                /** @var Product $product */
+                                try {
+                                    $result = $pusher($product, $store);
+                                    if ($result->state === 'success') {
+                                        $success++;
+                                    } elseif ($result->state === 'skipped') {
+                                        $skipped++;
+                                    } else {
+                                        $failed++;
+                                    }
+                                } catch (\Throwable $e) {
+                                    $failed++;
+                                    $errors[] = "{$product->name}: ".mb_substr($e->getMessage(), 0, 100);
+                                }
+                            }
+
+                            $body = "Başarılı: {$success}  •  Atlandı: {$skipped}  •  Hatalı: {$failed}";
+                            if (! empty($errors)) {
+                                $body .= "\n\n".implode("\n", array_slice($errors, 0, 3));
+                            }
+
+                            Notification::make()
+                                ->title($failed === 0 ? 'Shopify\'a aktarım tamam' : 'Aktarım kısmi başarılı')
+                                ->body($body)
+                                ->color($failed === 0 ? 'success' : 'warning')
+                                ->persistent()
+                                ->send();
+                        }),
                 ]),
             ])
             ->emptyStateHeading('Henüz katalog senkronize edilmedi')

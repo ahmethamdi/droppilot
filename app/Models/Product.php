@@ -13,6 +13,8 @@ class Product extends Model
         'plenty_item_id',
         'main_variation_id',
         'manufacturer_id',
+        'manufacturer_name',
+        'is_package',
         'item_type_id',
         'name',
         'name2',
@@ -25,6 +27,7 @@ class Product extends Model
     ];
 
     protected $casts = [
+        'is_package' => 'boolean',
         'payload' => 'array',
         'plenty_updated_at' => 'datetime',
         'synced_at' => 'datetime',
@@ -38,6 +41,11 @@ class Product extends Model
     public function variations(): HasMany
     {
         return $this->hasMany(ProductVariation::class);
+    }
+
+    public function pushedTo(): HasMany
+    {
+        return $this->hasMany(ShopifyPushedProduct::class);
     }
 
     public function mainVariation(): ?ProductVariation
