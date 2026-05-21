@@ -4,6 +4,7 @@ namespace App\Services\Shopify;
 
 use App\Models\ShopifyStore;
 use App\Services\Shopify\Requests\GetCustomersRequest;
+use App\Services\Shopify\Requests\GetOrderRequest;
 use App\Services\Shopify\Requests\GetOrdersRequest;
 use App\Services\Shopify\Requests\GetShopRequest;
 use Osiset\ShopifyApp\Services\OfflineAccessTokenRefresher;
@@ -53,6 +54,14 @@ class ShopifyClient
         $response->throw();
 
         return $response->json('orders') ?? [];
+    }
+
+    public function getOrder(int $orderId): array
+    {
+        $response = $this->connector()->send(new GetOrderRequest($orderId));
+        $response->throw();
+
+        return $response->json('order') ?? [];
     }
 
     public function getCustomers(int $limit = 50): array

@@ -5,6 +5,8 @@ namespace App\Services\Plenty;
 use App\Models\Supplier;
 use App\Models\SupplierReference;
 use App\Models\SkuLookup;
+use App\Services\Plenty\Requests\CreateContactAddressRequest;
+use App\Services\Plenty\Requests\CreateOrderRequest;
 use App\Services\Plenty\Requests\GetContactAddressesRequest;
 use App\Models\Product;
 use App\Models\ProductVariation;
@@ -782,5 +784,34 @@ class PlentyClient
         }
 
         return $count;
+    }
+
+    /**
+     * Plenty contact'a yeni adres ekle (Lieferadresse için typeId=2).
+     * @return int Yeni address ID
+     */
+    public function createContactAddress(int $contactId, array $address): int
+    {
+        $response = $this->connector()->send(new CreateContactAddressRequest($contactId, $address));
+        $response->throw();
+
+        $data = $response->json();
+        if (! isset($data['id'])) {
+            throw new \RuntimeException('Plenty createContactAddress beklenen "id" alanını döndürmedi.');
+        }
+
+        return (int) $data['id'];
+    }
+
+    /**
+     * Plenty'de Auftrag yarat.
+     * @return array Plenty order response (id, dates, status, ...)
+     */
+    public function createOrder(array $payload): array
+    {
+        $response = $this->connector()->send(new CreateOrderRequest($payload));
+        $response->throw();
+
+        return $response->json();
     }
 }

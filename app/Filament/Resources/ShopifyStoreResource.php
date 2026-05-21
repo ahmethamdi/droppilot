@@ -205,57 +205,36 @@ class ShopifyStoreResource extends Resource
                 ->schema([
                     Forms\Components\Select::make('plenty_sales_price_id')
                         ->label('Satış Fiyatı Tipi')
-                        ->options(function (?ShopifyStore $record) {
-                            $supplier = $record?->supplier ?? $record?->tenant?->suppliers()->first();
-                            if (! $supplier) {
-                                return [];
-                            }
-
-                            return $supplier
-                                ->referencesOfKind(\App\Models\SupplierReference::KIND_SALES_PRICE)
-                                ->orderBy('external_id')
-                                ->get()
-                                ->mapWithKeys(fn ($r) => [(int) $r->external_id => $r->label])
-                                ->all();
-                        })
+                        ->options(fn (?ShopifyStore $record) => static::optionsForKind(
+                            $record,
+                            \App\Models\SupplierReference::KIND_SALES_PRICE,
+                            fn ($r) => [(int) $r->external_id => $r->label],
+                        ))
                         ->searchable()
+                        ->preload()
                         ->placeholder('Bayinin fiyat tipini seçin (örn. Level 5)')
                         ->helperText('Bu mağazadan gelen siparişlerin Plenty\'deki birim fiyatı bu tipten alınır. SKU başına Plenty\'den canlı çekilir.'),
 
                     Forms\Components\Select::make('plenty_warehouse_id')
                         ->label('Depo')
-                        ->options(function (?ShopifyStore $record) {
-                            $supplier = $record?->supplier ?? $record?->tenant?->suppliers()->first();
-                            if (! $supplier) {
-                                return [];
-                            }
-
-                            return $supplier
-                                ->referencesOfKind(\App\Models\SupplierReference::KIND_WAREHOUSE)
-                                ->orderBy('external_id')
-                                ->get()
-                                ->mapWithKeys(fn ($r) => [(int) $r->external_id => "#{$r->external_id} — {$r->label}"])
-                                ->all();
-                        })
+                        ->options(fn (?ShopifyStore $record) => static::optionsForKind(
+                            $record,
+                            \App\Models\SupplierReference::KIND_WAREHOUSE,
+                            fn ($r) => [(int) $r->external_id => "#{$r->external_id} — {$r->label}"],
+                        ))
                         ->searchable()
+                        ->preload()
                         ->placeholder('Sevkıyat deposu (örn. Hilden)'),
 
                     Forms\Components\Select::make('plenty_order_status_id')
                         ->label('Yeni Sipariş Statüsü')
-                        ->options(function (?ShopifyStore $record) {
-                            $supplier = $record?->supplier ?? $record?->tenant?->suppliers()->first();
-                            if (! $supplier) {
-                                return [];
-                            }
-
-                            return $supplier
-                                ->referencesOfKind(\App\Models\SupplierReference::KIND_ORDER_STATUS)
-                                ->orderBy('external_id')
-                                ->get()
-                                ->mapWithKeys(fn ($r) => [(string) $r->external_id => $r->label])
-                                ->all();
-                        })
+                        ->options(fn (?ShopifyStore $record) => static::optionsForKind(
+                            $record,
+                            \App\Models\SupplierReference::KIND_ORDER_STATUS,
+                            fn ($r) => [(string) $r->external_id => $r->label],
+                        ))
                         ->searchable()
+                        ->preload()
                         ->placeholder('Yeni Auftrag\'lar bu statüde açılır')
                         ->helperText('Boş bırakılırsa tedarikçinin default sipariş statüsü kullanılır.'),
                 ]),
@@ -342,9 +321,22 @@ class ShopifyStoreResource extends Resource
                                 $error = $e->getMessage();
                             }
 
+                            $pushed = \App\Models\PlentyOrder::query()
+                                ->where('shopify_store_id', $record->id)
+                                ->whereIn('shopify_order_id', collect($orders)->pluck('id')->all())
+                                ->get()
+                                ->keyBy('shopify_order_id');
+
+                            $canPush = $record->supplier_id
+                                && $record->plenty_contact_id
+                                && $record->plenty_sales_price_id;
+
                             return view('filament.modals.shopify-orders', [
                                 'orders' => $orders,
                                 'error' => $error ?? null,
+                                'storeId' => $record->id,
+                                'pushed' => $pushed,
+                                'canPush' => $canPush,
                             ]);
                         }),
 
@@ -377,6 +369,33 @@ class ShopifyStoreResource extends Resource
             ->emptyStateDescription('Bir bayi DropPilot\'a Shopify mağazasını bağladığında burada görünür.')
             ->emptyStateIcon('heroicon-o-shopping-bag')
             ->defaultSort('id', 'desc');
+    }
+
+    /**
+     * Plenty Sipariş Ayarları dropdown'ları için supplier referans satırlarını çek.
+     *
+     * Supplier resolution sırası:
+     *   1. Mağazaya direkt bağlı supplier (shopify_stores.supplier_id)
+     *   2. Tenant üzerinden ilk supplier
+     *   3. Sistemdeki ilk aktif supplier (Bayi Eşleştirmesi henüz yapılmamış mağazalar için
+     *      dropdown'lar yine de dolu gözüksün; Vapor Handels tek supplier olduğundan güvenli)
+     */
+    protected static function optionsForKind(?ShopifyStore $record, string $kind, \Closure $map): array
+    {
+        $supplier = $record?->supplier
+            ?? $record?->tenant?->suppliers()->first()
+            ?? Supplier::where('status', 'active')->orderBy('id')->first();
+
+        if (! $supplier) {
+            return [];
+        }
+
+        return $supplier
+            ->referencesOfKind($kind)
+            ->orderBy('external_id')
+            ->get()
+            ->mapWithKeys($map)
+            ->all();
     }
 
     public static function getPages(): array

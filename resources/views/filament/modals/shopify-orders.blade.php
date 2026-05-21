@@ -8,6 +8,13 @@
             Bu mağazada henüz sipariş yok.
         </div>
     @else
+        @if(!$canPush)
+            <div class="rounded-lg bg-warning-50 p-3 text-sm text-warning-700 dark:bg-warning-950/50 dark:text-warning-400">
+                <strong>Uyarı:</strong> Bu mağaza Plenty'ye gönderim için tam ayarlanmamış. Düzenle ekranından
+                <em>Bayi Eşleştirmesi</em> ve <em>Satış Fiyatı Tipi</em> ayarlarını tamamlayın — yoksa
+                "Plenty'ye Gönder" butonu çalışmaz.
+            </div>
+        @endif
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-white/10">
                 <thead class="bg-gray-50 dark:bg-white/5">
@@ -19,13 +26,20 @@
                         <th class="px-3 py-2">Kargo</th>
                         <th class="px-3 py-2">Ürün</th>
                         <th class="px-3 py-2">Tarih</th>
+                        <th class="px-3 py-2">Plenty</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-white/10">
                     @foreach($orders as $order)
-                        <tr>
+                        @php
+                            $orderId = (int) ($order['id'] ?? 0);
+                            $existing = $pushed[$orderId] ?? null;
+                            $isSuccess = $existing && $existing->state === 'success' && $existing->plenty_order_id;
+                            $isFailed = $existing && $existing->state === 'failed';
+                        @endphp
+                        <tr wire:key="shopify-order-{{ $orderId }}">
                             <td class="px-3 py-2 font-medium text-gray-950 dark:text-white">
-                                {{ $order['name'] ?? ('#' . ($order['id'] ?? '?')) }}
+                                {{ $order['name'] ?? ('#' . $orderId) }}
                             </td>
                             <td class="px-3 py-2 text-gray-700 dark:text-gray-300">
                                 @if(!empty($order['customer']))
@@ -43,6 +57,44 @@
                             <td class="px-3 py-2 text-gray-700 dark:text-gray-300">{{ count($order['line_items'] ?? []) }}</td>
                             <td class="px-3 py-2 text-xs text-gray-500">
                                 {{ \Carbon\Carbon::parse($order['created_at'] ?? null)->format('d.m.Y H:i') }}
+                            </td>
+                            <td class="px-3 py-2">
+                                @if($isSuccess)
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-success-50 px-2 py-0.5 text-xs font-medium text-success-700 dark:bg-success-950/40 dark:text-success-400">
+                                        ✓ Auftrag #{{ $existing->plenty_order_id }}
+                                    </span>
+                                @elseif($isFailed)
+                                    <div class="flex flex-col gap-1">
+                                        <button
+                                            type="button"
+                                            wire:click="pushShopifyOrderToPlenty({{ $storeId }}, {{ $orderId }})"
+                                            wire:loading.attr="disabled"
+                                            wire:target="pushShopifyOrderToPlenty({{ $storeId }}, {{ $orderId }})"
+                                            @disabled(!$canPush)
+                                            class="inline-flex items-center gap-1 rounded-md bg-warning-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-warning-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            <span wire:loading.remove wire:target="pushShopifyOrderToPlenty({{ $storeId }}, {{ $orderId }})">↻ Tekrar Dene</span>
+                                            <span wire:loading wire:target="pushShopifyOrderToPlenty({{ $storeId }}, {{ $orderId }})">Gönderiliyor…</span>
+                                        </button>
+                                        @if($existing->error)
+                                            <div class="text-[10px] text-danger-600 dark:text-danger-400" title="{{ $existing->error }}">
+                                                {{ \Illuminate\Support\Str::limit($existing->error, 60) }}
+                                            </div>
+                                        @endif
+                                    </div>
+                                @else
+                                    <button
+                                        type="button"
+                                        wire:click="pushShopifyOrderToPlenty({{ $storeId }}, {{ $orderId }})"
+                                        wire:loading.attr="disabled"
+                                        wire:target="pushShopifyOrderToPlenty({{ $storeId }}, {{ $orderId }})"
+                                        @disabled(!$canPush)
+                                        class="inline-flex items-center gap-1 rounded-md bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        <span wire:loading.remove wire:target="pushShopifyOrderToPlenty({{ $storeId }}, {{ $orderId }})">Plenty'ye Gönder</span>
+                                        <span wire:loading wire:target="pushShopifyOrderToPlenty({{ $storeId }}, {{ $orderId }})">Gönderiliyor…</span>
+                                    </button>
+                                @endif
                             </td>
                         </tr>
                     @endforeach
