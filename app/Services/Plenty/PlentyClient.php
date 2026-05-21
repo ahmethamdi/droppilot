@@ -6,6 +6,7 @@ use App\Models\Supplier;
 use App\Models\SupplierReference;
 use App\Models\SkuLookup;
 use App\Services\Plenty\Requests\GetContactAddressesRequest;
+use App\Services\Plenty\Requests\GetContactClassesRequest;
 use App\Services\Plenty\Requests\GetContactRequest;
 use App\Services\Plenty\Requests\GetContactsRequest;
 use App\Services\Plenty\Requests\GetOrderStatusesRequest;
@@ -403,6 +404,33 @@ class PlentyClient
             'is_active' => (bool) $cache->is_active,
             'cache' => $cache,
         ];
+    }
+
+    /**
+     * Plenty'de tanımlı tüm contact class'larını ID -> isim olarak döndür.
+     *
+     * Endpoint: GET /rest/accounts/contacts/classes
+     * Döndüğü ham veri: {"1":"Händler (B2B)", "2":"B2C Kunde", "5":"B2B Shop Standard", ...}
+     *
+     * @return array<int, string>  classId => name
+     */
+    public function listContactClasses(): array
+    {
+        $response = $this->connector()->send(new GetContactClassesRequest);
+        $response->throw();
+
+        $raw = $response->json();
+        if (! \is_array($raw)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($raw as $id => $name) {
+            $out[(int) $id] = trim((string) $name);
+        }
+        ksort($out);
+
+        return $out;
     }
 
     /**

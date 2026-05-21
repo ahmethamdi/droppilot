@@ -153,15 +153,36 @@ class SupplierResource extends Resource
                 ]),
 
             Forms\Components\Section::make('B2B Müşteri Sınıfları')
-                ->description('Bu tedarikçide B2B müşterileri ayıran Plenty contact class ID\'leri. Boş bırakırsanız tüm contact\'lar şirket adı dolu olanlara göre taranır (yavaş).')
+                ->description('Bu tedarikçide B2B müşterileri ayıran Plenty contact class\'ları. Listede gözükmeyenler için "Plenty Sınıflarını Yenile" aksiyonunu çalıştırın.')
                 ->hiddenOn('create')
                 ->schema([
-                    Forms\Components\TagsInput::make('b2b_class_ids')
-                        ->label('B2B Plenty class ID\'leri')
-                        ->placeholder('12, 50, 1...')
-                        ->helperText('Plenty\'de bu class\'lara atanmış müşteriler B2B olarak gösterilir. Ör: McVapes class=12, iocaste class=50.')
-                        ->separator(',')
-                        ->splitKeys(['Enter', 'Tab', ',']),
+                    Forms\Components\Select::make('b2b_class_ids')
+                        ->label('B2B Sınıfları')
+                        ->multiple()
+                        ->searchable()
+                        ->placeholder('Sınıf ara (örn: "Händler", "B2B")')
+                        ->helperText('Plenty\'deki tüm contact sınıflarından B2B olanları seçin. İlk yükte canlı çekilir; sonra cache\'lenir (10dk).')
+                        ->options(function (?Supplier $record) {
+                            if (! $record) {
+                                return [];
+                            }
+
+                            return \Illuminate\Support\Facades\Cache::remember(
+                                "plenty:classes:supplier:{$record->id}",
+                                now()->addMinutes(10),
+                                function () use ($record) {
+                                    try {
+                                        $classes = (new \App\Services\Plenty\PlentyClient($record))->listContactClasses();
+
+                                        return collect($classes)
+                                            ->mapWithKeys(fn ($name, $id) => [$id => "#{$id} — {$name}"])
+                                            ->all();
+                                    } catch (\Throwable $e) {
+                                        return [];
+                                    }
+                                }
+                            );
+                        }),
                 ]),
 
             Forms\Components\Section::make('Sahip')
