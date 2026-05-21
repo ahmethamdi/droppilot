@@ -196,25 +196,35 @@ class ProductResource extends Resource
                 ]),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\BulkAction::make('push_to_shopify')
-                        ->label('Seçilenleri Shopify\'a Aktar')
-                        ->icon('heroicon-o-arrow-up-tray')
-                        ->color('success')
-                        ->requiresConfirmation()
-                        ->modalHeading('Shopify\'a Aktar')
-                        ->modalDescription('Seçili ürünleri seçilen mağazaya gönder. Aynı SKU zaten varsa Shopify hata verebilir — atlanır.')
-                        ->form([
-                            Forms\Components\Select::make('shopify_store_id')
-                                ->label('Hedef Shopify Mağazası')
-                                ->options(fn () => ShopifyStore::query()
-                                    ->whereNotNull('password')
-                                    ->get()
-                                    ->mapWithKeys(fn ($s) => [$s->id => $s->name.($s->tenant ? " — {$s->tenant->name}" : '')])
-                                    ->all())
-                                ->required()
-                                ->searchable(),
-                        ])
+                Tables\Actions\BulkAction::make('push_to_shopify')
+                    ->label('Ürünleri Shopify Mağazasına Aktar')
+                    ->icon('heroicon-o-arrow-up-tray')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalHeading('Ürünleri Shopify Mağazasına Aktar')
+                    ->modalDescription(fn ($livewire) => 'Seçili '.count($livewire->getSelectedTableRecords()).' ürün, aşağıda seçeceğin Shopify mağazasına aktarılacak. Aynı ürün zaten o mağazada varsa atlanır.')
+                    ->modalSubmitActionLabel('Aktar')
+                    ->modalIcon('heroicon-o-shopping-bag')
+                    ->modalWidth('lg')
+                    ->form([
+                        Forms\Components\Select::make('shopify_store_id')
+                            ->label('Hedef Shopify Mağazası')
+                            ->placeholder('Bir mağaza seçin...')
+                            ->options(fn () => ShopifyStore::query()
+                                ->whereNotNull('password')
+                                ->with('tenant')
+                                ->get()
+                                ->mapWithKeys(fn ($s) => [
+                                    $s->id => $s->tenant
+                                        ? "{$s->tenant->name}  —  {$s->name}"
+                                        : $s->name,
+                                ])
+                                ->all())
+                            ->required()
+                            ->searchable()
+                            ->native(false)
+                            ->helperText('Şu an DropPilot\'a bağlı olan Shopify mağazaları görünür. Her mağaza bir bayinin (Plenty B2B müşterisinin) sitesidir.'),
+                    ])
                         ->action(function (Collection $records, array $data) {
                             $store = ShopifyStore::find($data['shopify_store_id']);
                             if (! $store) {
@@ -258,7 +268,6 @@ class ProductResource extends Resource
                                 ->persistent()
                                 ->send();
                         }),
-                ]),
             ])
             ->emptyStateHeading('Henüz katalog senkronize edilmedi')
             ->emptyStateDescription('Yukarıdaki "Plenty\'den Katalogu Senkronize Et" butonuna bas.')
