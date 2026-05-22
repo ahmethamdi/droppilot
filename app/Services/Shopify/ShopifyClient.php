@@ -27,12 +27,16 @@ class ShopifyClient
      */
     protected function ensureFreshToken(): void
     {
+        // Manuel eklenen Custom App store'ları için refresh token yoktur — token süresizdir,
+        // refresh akışını çalıştırmaya gerek yok.
+        if (empty($this->store->shopify_offline_refresh_token)) {
+            return;
+        }
+
         try {
             app(OfflineAccessTokenRefresher::class)->refreshIfNeeded($this->store);
             $this->store->refresh();
         } catch (\Throwable $e) {
-            // Refresh başarısızsa eski token'ı kullanmaya devam et — Shopify
-            // 401 dönerse zaten üst katmanda anlaşılır.
             \Illuminate\Support\Facades\Log::warning('Shopify token refresh skipped', [
                 'shop' => $this->store->name,
                 'reason' => $e->getMessage(),

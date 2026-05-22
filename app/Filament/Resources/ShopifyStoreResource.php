@@ -289,6 +289,98 @@ class ShopifyStoreResource extends Resource
                     ->label('Nach Händler')
                     ->relationship('tenant', 'name'),
             ])
+            ->headerActions([
+                Tables\Actions\Action::make('add_manual')
+                    ->label('Shop manuell hinzufügen')
+                    ->icon('heroicon-o-plus-circle')
+                    ->color('primary')
+                    ->modalHeading('Shop mit Custom-App-Token verbinden')
+                    ->modalDescription('Der Händler erstellt im eigenen Shopify-Admin unter „Apps → Apps und Vertriebskanäle entwickeln" eine private App und teilt den Admin-API-Access-Token mit. Token-Format: shpat_...')
+                    ->modalSubmitActionLabel('Verbinden')
+                    ->modalIcon('heroicon-o-link')
+                    ->modalWidth('lg')
+                    ->form([
+                        Forms\Components\TextInput::make('shop_domain')
+                            ->label('Shopify-Shop-Domain')
+                            ->placeholder('mein-shop.myshopify.com')
+                            ->required()
+                            ->helperText('Vollständige myshopify.com-Domain (ohne https://). Wird normalisiert.')
+                            ->dehydrateStateUsing(fn ($state) => static::normalizeShopDomain((string) $state)),
+                        Forms\Components\TextInput::make('access_token')
+                            ->label('Admin-API-Access-Token')
+                            ->password()
+                            ->revealable()
+                            ->required()
+                            ->placeholder('shpat_...')
+                            ->helperText('Wird einmalig im Shopify-Admin angezeigt, wenn die Custom App installiert wird.'),
+                        Forms\Components\TextInput::make('email')
+                            ->label('Shop-E-Mail (optional)')
+                            ->email()
+                            ->placeholder('inhaber@beispiel.de'),
+                    ])
+                    ->action(function (array $data) {
+                        $domain = static::normalizeShopDomain((string) $data['shop_domain']);
+                        $token = trim((string) $data['access_token']);
+
+                        if (! str_ends_with($domain, '.myshopify.com')) {
+                            Notification::make()
+                                ->title('Ungültige Shop-Domain')
+                                ->body('Die Domain muss auf .myshopify.com enden.')
+                                ->danger()->send();
+
+                            return;
+                        }
+
+                        if ($domain === '' || $token === '') {
+                            Notification::make()->title('Domain und Token sind erforderlich')->danger()->send();
+
+                            return;
+                        }
+
+                        $existing = ShopifyStore::where('name', $domain)->first();
+                        if ($existing) {
+                            $existing->update([
+                                'password' => $token,
+                                'email' => $data['email'] ?: $existing->email,
+                                'installed_at' => $existing->installed_at ?? now(),
+                                'uninstalled_at' => null,
+                            ]);
+                            $store = $existing;
+                        } else {
+                            $store = ShopifyStore::create([
+                                'name' => $domain,
+                                'password' => $token,
+                                'email' => $data['email'] ?: null,
+                                'installed_at' => now(),
+                            ]);
+                        }
+
+                        try {
+                            $result = (new ShopifyClient($store))->testConnection();
+                            if ($result['ok']) {
+                                Notification::make()
+                                    ->title('Shop verbunden')
+                                    ->body($domain.' ist bereit. Bitte unter „Bearbeiten" Händler und Verkaufspreistyp zuweisen.')
+                                    ->success()
+                                    ->send();
+                            } else {
+                                Notification::make()
+                                    ->title('Shop gespeichert, aber Verbindungstest fehlgeschlagen')
+                                    ->body($result['message'])
+                                    ->warning()
+                                    ->persistent()
+                                    ->send();
+                            }
+                        } catch (\Throwable $e) {
+                            Notification::make()
+                                ->title('Shop gespeichert, Token ungeprüft')
+                                ->body($e->getMessage())
+                                ->warning()
+                                ->persistent()
+                                ->send();
+                        }
+                    }),
+            ])
             ->actions([
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\Action::make('test_connection')
@@ -371,6 +463,18 @@ class ShopifyStoreResource extends Resource
             ->emptyStateDescription('Sobald ein Händler seinen Shopify-Shop mit DropPilot verbindet, erscheint er hier.')
             ->emptyStateIcon('heroicon-o-shopping-bag')
             ->defaultSort('id', 'desc');
+    }
+
+    /**
+     * Shopify shop domain'ini normalize et: https://, slash, boşluk temizle, lowercase.
+     */
+    protected static function normalizeShopDomain(string $input): string
+    {
+        $clean = trim(strtolower($input));
+        $clean = preg_replace('#^https?://#i', '', $clean) ?? $clean;
+        $clean = rtrim($clean, '/');
+
+        return $clean;
     }
 
     /**
