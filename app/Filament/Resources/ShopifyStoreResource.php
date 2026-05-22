@@ -457,6 +457,47 @@ class ShopifyStoreResource extends Resource
                         }),
 
                     Tables\Actions\EditAction::make()->label('Bearbeiten / Händler zuordnen'),
+
+                    Tables\Actions\Action::make('force_delete')
+                        ->label('Shop endgültig löschen')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('Shop endgültig löschen?')
+                        ->modalDescription(fn (ShopifyStore $record) => "Shop {$record->name} wird unwiderruflich aus der Datenbank entfernt — inklusive Token, Händler-Zuordnung und allen verknüpften Übertragungen. Bestätigung erforderlich.")
+                        ->modalSubmitActionLabel('Endgültig löschen')
+                        ->action(function (ShopifyStore $record) {
+                            $name = $record->name;
+                            $record->forceDelete();
+
+                            Notification::make()
+                                ->title("Shop {$name} entfernt")
+                                ->success()
+                                ->send();
+                        }),
+                ]),
+            ])
+            ->bulkActions([
+                Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\BulkAction::make('bulk_force_delete')
+                        ->label('Ausgewählte Shops endgültig löschen')
+                        ->icon('heroicon-o-trash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('Ausgewählte Shops endgültig löschen?')
+                        ->modalDescription('Die markierten Shops werden unwiderruflich entfernt.')
+                        ->modalSubmitActionLabel('Endgültig löschen')
+                        ->action(function (\Illuminate\Database\Eloquent\Collection $records) {
+                            $count = $records->count();
+                            foreach ($records as $r) {
+                                $r->forceDelete();
+                            }
+
+                            Notification::make()
+                                ->title("{$count} Shops entfernt")
+                                ->success()
+                                ->send();
+                        }),
                 ]),
             ])
             ->emptyStateHeading('Noch keine verbundenen Shopify-Shops')
