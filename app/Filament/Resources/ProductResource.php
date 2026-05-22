@@ -26,32 +26,35 @@ class ProductResource extends Resource
 
     protected static ?int $navigationSort = 5;
 
-    protected static ?string $label = 'Ürün';
+    protected static ?string $label = 'Artikel';
 
-    protected static ?string $pluralLabel = 'Ürünler';
+    protected static ?string $pluralLabel = 'Artikel';
+
+    protected static ?string $navigationLabel = 'Artikel';
 
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('Plenty Kaynak')
+            Forms\Components\Section::make('Plenty-Quelle')
                 ->columns(3)
                 ->schema([
                     Forms\Components\TextInput::make('plenty_item_id')
-                        ->label('Plenty Item ID')
+                        ->label('Plenty Artikel-ID')
                         ->disabled(),
                     Forms\Components\TextInput::make('main_variation_id')
-                        ->label('Ana Variation ID')
+                        ->label('Hauptvariations-ID')
                         ->disabled(),
                     Forms\Components\Select::make('supplier_id')
+                        ->label('Lieferant')
                         ->relationship('supplier', 'name')
                         ->disabled(),
                 ]),
-            Forms\Components\Section::make('İçerik')
+            Forms\Components\Section::make('Inhalt')
                 ->schema([
-                    Forms\Components\TextInput::make('name')->label('Ad')->disabled(),
-                    Forms\Components\TextInput::make('name2')->label('Alt Ad')->disabled(),
-                    Forms\Components\Textarea::make('short_description')->label('Kısa Açıklama')->rows(3)->disabled(),
-                    Forms\Components\Textarea::make('description')->label('Açıklama')->rows(8)->disabled(),
+                    Forms\Components\TextInput::make('name')->label('Name')->disabled(),
+                    Forms\Components\TextInput::make('name2')->label('Untertitel')->disabled(),
+                    Forms\Components\Textarea::make('short_description')->label('Kurzbeschreibung')->rows(3)->disabled(),
+                    Forms\Components\Textarea::make('description')->label('Beschreibung')->rows(8)->disabled(),
                 ]),
         ]);
     }
@@ -61,27 +64,27 @@ class ProductResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\ImageColumn::make('mainVariationImage')
-                    ->label('Görsel')
+                    ->label('Bild')
                     ->state(fn (Product $record) => $record->variations()->whereNotNull('image_url')->first()?->image_url)
                     ->square()
                     ->size(48),
                 Tables\Columns\TextColumn::make('plenty_item_id')
-                    ->label('Plenty ID')
+                    ->label('Plenty-ID')
                     ->sortable()
                     ->searchable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('name')
-                    ->label('Ürün Adı')
+                    ->label('Artikelname')
                     ->searchable()
                     ->sortable()
                     ->limit(60)
                     ->weight('medium'),
                 Tables\Columns\TextColumn::make('manufacturer_name')
-                    ->label('Üretici')
+                    ->label('Hersteller')
                     ->limit(30)
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('pushedTo_count')
-                    ->label('Aktarıldı')
+                    ->label('Übertragen')
                     ->counts('pushedTo')
                     ->badge()
                     ->color(fn ($state) => $state > 0 ? 'success' : 'gray')
@@ -93,64 +96,64 @@ class ProductResource extends Resource
                     ->color('gray')
                     ->placeholder('—'),
                 Tables\Columns\TextColumn::make('mainVariationPrice')
-                    ->label('Fiyat')
+                    ->label('Preis')
                     ->state(fn (Product $record) => $record->variations()->first()?->retail_price)
                     ->money('EUR')
                     ->placeholder('—')
                     ->weight('semibold')
                     ->color('success'),
                 Tables\Columns\TextColumn::make('mainVariationStock')
-                    ->label('Stok')
+                    ->label('Bestand')
                     ->state(fn (Product $record) => $record->variations()->first()?->stock_net)
                     ->numeric()
                     ->placeholder('—'),
                 Tables\Columns\TextColumn::make('supplier.name')
-                    ->label('Tedarikçi')
+                    ->label('Lieferant')
                     ->badge()
                     ->color('primary')
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('synced_at')
-                    ->label('Senkron')
+                    ->label('Synchronisiert')
                     ->since()
                     ->toggleable(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('supplier_id')
-                    ->label('Tedarikçi')
+                    ->label('Lieferant')
                     ->relationship('supplier', 'name'),
             ])
             ->headerActions([
                 Tables\Actions\Action::make('sync_from_plenty')
-                    ->label('Plenty\'den Katalogu Senkronize Et')
+                    ->label('Katalog aus Plenty synchronisieren')
                     ->icon('heroicon-o-arrow-down-tray')
                     ->color('primary')
                     ->form([
                         Forms\Components\Select::make('supplier_id')
-                            ->label('Tedarikçi')
+                            ->label('Lieferant')
                             ->options(fn () => Supplier::where('status', 'active')->pluck('name', 'id'))
                             ->required(),
                         Forms\Components\TextInput::make('max_items')
-                            ->label('Taranacak ürün sayısı (üst sınır)')
+                            ->label('Max. zu prüfende Artikelanzahl')
                             ->numeric()
                             ->default(2000)
-                            ->helperText('Plenty\'de ~9500 ürün taranır; sadece "Paket" üreticili olanlar DB\'ye yazılır.'),
+                            ->helperText('Plenty enthält ca. 9.500 Artikel; nur Artikel mit „Paket"-Hersteller werden in die DB übernommen.'),
                     ])
                     ->action(function (array $data) {
                         $supplier = Supplier::find($data['supplier_id']);
                         if (! $supplier) {
-                            Notification::make()->title('Tedarikçi bulunamadı')->danger()->send();
+                            Notification::make()->title('Lieferant nicht gefunden')->danger()->send();
 
                             return;
                         }
                         try {
                             $result = (new PlentyClient($supplier))->syncProducts(
                                 (int) $data['max_items'],
-                                true, // sadece paket variation'lar çekilir
+                                true,
                             );
                             Notification::make()
-                                ->title('Senkron tamam')
+                                ->title('Synchronisation abgeschlossen')
                                 ->body(\sprintf(
-                                    'İşlenen: %d  •  Yeni: %d  •  Güncellenen: %d  •  Variation: %d',
+                                    'Verarbeitet: %d  •  Neu: %d  •  Aktualisiert: %d  •  Varianten: %d',
                                     $result['processed'],
                                     $result['created'],
                                     $result['updated'],
@@ -160,7 +163,7 @@ class ProductResource extends Resource
                                 ->send();
                         } catch (\Throwable $e) {
                             Notification::make()
-                                ->title('Senkron hata verdi')
+                                ->title('Synchronisation fehlgeschlagen')
                                 ->body($e->getMessage())
                                 ->danger()
                                 ->persistent()
@@ -171,20 +174,20 @@ class ProductResource extends Resource
             ->actions([
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\Action::make('sync_variations')
-                        ->label('Variationları Çek')
+                        ->label('Varianten laden')
                         ->icon('heroicon-o-cube-transparent')
                         ->color('info')
                         ->action(function (Product $record) {
                             try {
                                 $n = (new PlentyClient($record->supplier))->syncItemVariations($record);
                                 Notification::make()
-                                    ->title('Variations alındı')
-                                    ->body("{$n} variation senkronize edildi")
+                                    ->title('Varianten geladen')
+                                    ->body("{$n} Varianten synchronisiert")
                                     ->success()
                                     ->send();
                             } catch (\Throwable $e) {
                                 Notification::make()
-                                    ->title('Variation senkronu başarısız')
+                                    ->title('Variantensynchronisation fehlgeschlagen')
                                     ->body($e->getMessage())
                                     ->danger()
                                     ->persistent()
@@ -192,24 +195,24 @@ class ProductResource extends Resource
                             }
                         }),
 
-                    Tables\Actions\ViewAction::make(),
+                    Tables\Actions\ViewAction::make()->label('Anzeigen'),
                 ]),
             ])
             ->bulkActions([
                 Tables\Actions\BulkAction::make('push_to_shopify')
-                    ->label('Ürünleri Shopify Mağazasına Aktar')
+                    ->label('In Shopify-Shop übertragen')
                     ->icon('heroicon-o-arrow-up-tray')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->modalHeading('Ürünleri Shopify Mağazasına Aktar')
-                    ->modalDescription(fn ($livewire) => 'Seçili '.count($livewire->getSelectedTableRecords()).' ürün, aşağıda seçeceğin Shopify mağazasına aktarılacak. Aynı ürün zaten o mağazada varsa atlanır.')
-                    ->modalSubmitActionLabel('Aktar')
+                    ->modalHeading('Artikel in Shopify-Shop übertragen')
+                    ->modalDescription(fn ($livewire) => 'Die ausgewählten '.count($livewire->getSelectedTableRecords()).' Artikel werden in den unten gewählten Shopify-Shop übertragen. Bereits dort vorhandene Artikel werden übersprungen.')
+                    ->modalSubmitActionLabel('Übertragen')
                     ->modalIcon('heroicon-o-shopping-bag')
                     ->modalWidth('lg')
                     ->form([
                         Forms\Components\Select::make('shopify_store_id')
-                            ->label('Hedef Shopify Mağazası')
-                            ->placeholder('Bir mağaza seçin...')
+                            ->label('Ziel-Shopify-Shop')
+                            ->placeholder('Shop auswählen ...')
                             ->options(fn () => ShopifyStore::query()
                                 ->whereNotNull('password')
                                 ->with('tenant')
@@ -223,12 +226,12 @@ class ProductResource extends Resource
                             ->required()
                             ->searchable()
                             ->native(false)
-                            ->helperText('Şu an DropPilot\'a bağlı olan Shopify mağazaları görünür. Her mağaza bir bayinin (Plenty B2B müşterisinin) sitesidir.'),
+                            ->helperText('Es werden alle mit DropPilot verbundenen Shopify-Shops aufgelistet. Jeder Shop gehört einem Händler (Plenty-B2B-Kunden).'),
                     ])
                         ->action(function (Collection $records, array $data) {
                             $store = ShopifyStore::find($data['shopify_store_id']);
                             if (! $store) {
-                                Notification::make()->title('Mağaza bulunamadı')->danger()->send();
+                                Notification::make()->title('Shop nicht gefunden')->danger()->send();
 
                                 return;
                             }
@@ -256,21 +259,21 @@ class ProductResource extends Resource
                                 }
                             }
 
-                            $body = "Başarılı: {$success}  •  Atlandı: {$skipped}  •  Hatalı: {$failed}";
+                            $body = "Erfolgreich: {$success}  •  Übersprungen: {$skipped}  •  Fehlgeschlagen: {$failed}";
                             if (! empty($errors)) {
                                 $body .= "\n\n".implode("\n", array_slice($errors, 0, 3));
                             }
 
                             Notification::make()
-                                ->title($failed === 0 ? 'Shopify\'a aktarım tamam' : 'Aktarım kısmi başarılı')
+                                ->title($failed === 0 ? 'Übertragung an Shopify abgeschlossen' : 'Übertragung teilweise erfolgreich')
                                 ->body($body)
                                 ->color($failed === 0 ? 'success' : 'warning')
                                 ->persistent()
                                 ->send();
                         }),
             ])
-            ->emptyStateHeading('Henüz katalog senkronize edilmedi')
-            ->emptyStateDescription('Yukarıdaki "Plenty\'den Katalogu Senkronize Et" butonuna bas.')
+            ->emptyStateHeading('Noch kein Katalog synchronisiert')
+            ->emptyStateDescription('Oben auf „Katalog aus Plenty synchronisieren" klicken.')
             ->emptyStateIcon('heroicon-o-cube')
             ->modifyQueryUsing(fn ($query) => $query->where('is_package', true)->orderBy('plenty_item_id'));
     }

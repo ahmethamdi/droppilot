@@ -19,20 +19,26 @@ class SupplierResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-truck';
 
-    protected static ?string $navigationGroup = 'Multi-Tenancy';
+    protected static ?string $navigationGroup = 'Mandanten';
 
     protected static ?string $recordTitleAttribute = 'name';
 
     protected static ?int $navigationSort = 20;
 
+    protected static ?string $label = 'Lieferant';
+
+    protected static ?string $pluralLabel = 'Lieferanten';
+
+    protected static ?string $navigationLabel = 'Lieferanten';
+
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('Genel')
+            Forms\Components\Section::make('Allgemein')
                 ->columns(2)
                 ->schema([
                     Forms\Components\TextInput::make('name')
-                        ->label('Tedarikçi Adı')
+                        ->label('Lieferantenname')
                         ->required()
                         ->maxLength(255)
                         ->live(onBlur: true)
@@ -48,6 +54,7 @@ class SupplierResource extends Resource
                         ->unique(ignoreRecord: true),
 
                     Forms\Components\Select::make('kind')
+                        ->label('Typ')
                         ->options([
                             'plenty' => 'PlentyMarkets',
                         ])
@@ -57,17 +64,17 @@ class SupplierResource extends Resource
 
                     Forms\Components\Select::make('status')
                         ->options([
-                            'active' => 'Aktif',
-                            'pending' => 'Onay bekliyor',
-                            'suspended' => 'Askıya alınmış',
+                            'active' => 'Aktiv',
+                            'pending' => 'Wartet auf Freigabe',
+                            'suspended' => 'Gesperrt',
                         ])
                         ->default('active')
                         ->required()
                         ->native(false),
                 ]),
 
-            Forms\Components\Section::make('PlentyMarkets Bağlantısı')
-                ->description('Krediler şifrelenmiş olarak saklanır ve loglanmaz.')
+            Forms\Components\Section::make('PlentyMarkets-Verbindung')
+                ->description('Zugangsdaten werden verschlüsselt gespeichert und nicht geloggt.')
                 ->columns(2)
                 ->schema([
                     Forms\Components\TextInput::make('plenty_base_url')
@@ -78,22 +85,22 @@ class SupplierResource extends Resource
                         ->columnSpanFull(),
 
                     Forms\Components\TextInput::make('plenty_login_user')
-                        ->label('API Kullanıcı Adı')
+                        ->label('API-Benutzername')
                         ->required()
                         ->autocomplete('off'),
 
                     Forms\Components\TextInput::make('plenty_login_password')
-                        ->label('API Şifresi')
+                        ->label('API-Passwort')
                         ->password()
                         ->revealable()
                         ->required(fn (string $operation) => $operation === 'create')
                         ->autocomplete('new-password')
                         ->dehydrated(fn ($state) => filled($state))
-                        ->helperText('Edit\'te otomatik dolu gelir. Değiştirmek istemiyorsan dokunma.'),
+                        ->helperText('Beim Bearbeiten wird das Feld automatisch befüllt. Leer lassen, wenn nicht geändert werden soll.'),
                 ]),
 
-            Forms\Components\Section::make('Varsayılan Plenty Referansları')
-                ->description('Önce "Plenty Referanslarını Senkronize Et" aksiyonunu çalıştırın, sonra burada seçim yapın.')
+            Forms\Components\Section::make('Plenty-Standardreferenzen')
+                ->description('Zuerst „Plenty-Referenzen synchronisieren" ausführen, danach hier auswählen.')
                 ->columns(2)
                 ->hiddenOn('create')
                 ->schema([
@@ -107,11 +114,11 @@ class SupplierResource extends Resource
                                 ->all()
                             : [])
                         ->searchable()
-                        ->placeholder('Referans verisi yoksa önce senkronize edin')
-                        ->helperText('DropPilot siparişleri bu kaynak ID\'si ile işaretler.'),
+                        ->placeholder('Keine Referenzen vorhanden — bitte zuerst synchronisieren')
+                        ->helperText('DropPilot markiert Aufträge mit dieser Herkunft.'),
 
                     Forms\Components\Select::make('default_order_status_id')
-                        ->label('Yeni Sipariş Durumu')
+                        ->label('Status für neue Aufträge')
                         ->options(fn (?Supplier $record) => $record
                             ? $record->referencesOfKind(\App\Models\SupplierReference::KIND_ORDER_STATUS)
                                 ->orderBy('external_id')
@@ -120,10 +127,10 @@ class SupplierResource extends Resource
                                 ->all()
                             : [])
                         ->searchable()
-                        ->placeholder('Önce senkronize edin'),
+                        ->placeholder('Bitte zuerst synchronisieren'),
 
                     Forms\Components\Select::make('default_sales_price_id')
-                        ->label('Satış Fiyatı Tipi (B2B)')
+                        ->label('Verkaufspreistyp (B2B)')
                         ->options(fn (?Supplier $record) => $record
                             ? $record->referencesOfKind(\App\Models\SupplierReference::KIND_SALES_PRICE)
                                 ->orderBy('external_id')
@@ -132,10 +139,10 @@ class SupplierResource extends Resource
                                 ->all()
                             : [])
                         ->searchable()
-                        ->helperText('Sipariş Plenty\'ye düşerken bu fiyat tipinden çekilen tutar Auftrag\'ın priceOriginalGross değeri olur.'),
+                        ->helperText('Beim Anlegen des Plenty-Auftrags wird der Preis dieses Typs als priceOriginalGross verwendet.'),
 
                     Forms\Components\Select::make('default_warehouse_id')
-                        ->label('Varsayılan Depo')
+                        ->label('Standardlager')
                         ->options(fn (?Supplier $record) => $record
                             ? $record->referencesOfKind(\App\Models\SupplierReference::KIND_WAREHOUSE)
                                 ->orderBy('external_id')
@@ -144,24 +151,24 @@ class SupplierResource extends Resource
                                 ->all()
                             : [])
                         ->searchable()
-                        ->placeholder('Önce senkronize edin'),
+                        ->placeholder('Bitte zuerst synchronisieren'),
 
                     Forms\Components\TextInput::make('default_plenty_id')
                         ->label('Mandant (plentyId)')
                         ->numeric()
-                        ->helperText('Bu hesapta birden fazla mağaza varsa Plenty\'den manuel girin.'),
+                        ->helperText('Falls in diesem Konto mehrere Mandanten existieren, ID manuell aus Plenty eintragen.'),
                 ]),
 
-            Forms\Components\Section::make('B2B Müşteri Sınıfları')
-                ->description('Bu tedarikçide B2B müşterileri ayıran Plenty contact class\'ları. Listede gözükmeyenler için "Plenty Sınıflarını Yenile" aksiyonunu çalıştırın.')
+            Forms\Components\Section::make('B2B-Kundenklassen')
+                ->description('Plenty-Kontaktklassen, die B2B-Kunden dieses Lieferanten umfassen. Fehlende Klassen können über „Plenty-Klassen aktualisieren" nachgeladen werden.')
                 ->hiddenOn('create')
                 ->schema([
                     Forms\Components\Select::make('b2b_class_ids')
-                        ->label('B2B Sınıfları')
+                        ->label('B2B-Klassen')
                         ->multiple()
                         ->searchable()
-                        ->placeholder('Sınıf ara (örn: "Händler", "B2B")')
-                        ->helperText('Plenty\'deki tüm contact sınıflarından B2B olanları seçin. İlk yükte canlı çekilir; sonra cache\'lenir (10dk).')
+                        ->placeholder('Klasse suchen (z. B. „Händler", „B2B")')
+                        ->helperText('Alle B2B-relevanten Kontaktklassen aus Plenty auswählen. Erste Abfrage live; danach 10 Min. gecacht.')
                         ->options(function (?Supplier $record) {
                             if (! $record) {
                                 return [];
@@ -185,10 +192,10 @@ class SupplierResource extends Resource
                         }),
                 ]),
 
-            Forms\Components\Section::make('Sahip')
+            Forms\Components\Section::make('Inhaber')
                 ->schema([
                     Forms\Components\Select::make('owner_user_id')
-                        ->label('Tedarikçi Sahibi (opsiyonel)')
+                        ->label('Lieferanteninhaber (optional)')
                         ->relationship('owner', 'email')
                         ->searchable()
                         ->preload()
@@ -218,27 +225,27 @@ class SupplierResource extends Resource
                     }),
                 Tables\Columns\TextColumn::make('tenants_count')
                     ->counts('tenants')
-                    ->label('Bağlı Bayi'),
+                    ->label('Verbundene Händler'),
                 Tables\Columns\TextColumn::make('created_at')->dateTime('d.m.Y H:i')->sortable()->toggleable(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->options([
-                    'active' => 'Aktif',
-                    'pending' => 'Onay bekliyor',
-                    'suspended' => 'Askıya alınmış',
+                    'active' => 'Aktiv',
+                    'pending' => 'Wartet auf Freigabe',
+                    'suspended' => 'Gesperrt',
                 ]),
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\Action::make('test_connection')
-                        ->label('Bağlantıyı Test Et')
+                        ->label('Verbindung testen')
                         ->icon('heroicon-o-bolt')
                         ->color('warning')
                         ->action(function (Supplier $record) {
                             $result = (new PlentyClient($record))->testConnection();
 
                             $notification = Notification::make()
-                                ->title($result['ok'] ? 'Plenty bağlantısı başarılı' : 'Plenty bağlantısı başarısız')
+                                ->title($result['ok'] ? 'Plenty-Verbindung erfolgreich' : 'Plenty-Verbindung fehlgeschlagen')
                                 ->body($result['message']);
 
                             $result['ok']
@@ -247,18 +254,18 @@ class SupplierResource extends Resource
                         }),
 
                     Tables\Actions\Action::make('sync_references')
-                        ->label('Plenty Referanslarını Senkronize Et')
+                        ->label('Plenty-Referenzen synchronisieren')
                         ->icon('heroicon-o-arrow-path')
                         ->color('info')
                         ->requiresConfirmation()
-                        ->modalDescription('Plenty\'den referrers, warehouses, order statuses ve sales prices çekilip kaydedilecek. ~5-10 sn sürebilir.')
+                        ->modalDescription('Referrers, Lager, Auftragsstatus und Verkaufspreise werden aus Plenty geladen und gespeichert. Dauert ca. 5–10 Sekunden.')
                         ->action(function (Supplier $record) {
                             try {
                                 $counts = (new PlentyClient($record))->syncReferences();
                                 Notification::make()
-                                    ->title('Referans senkronu tamam')
+                                    ->title('Referenzsynchronisation abgeschlossen')
                                     ->body(\sprintf(
-                                        'Referrers: %d, Warehouses: %d, Statuses: %d, Sales Prices: %d',
+                                        'Referrers: %d, Lager: %d, Status: %d, Verkaufspreise: %d',
                                         $counts['referrer'] ?? 0,
                                         $counts['warehouse'] ?? 0,
                                         $counts['order_status'] ?? 0,
@@ -268,7 +275,7 @@ class SupplierResource extends Resource
                                     ->send();
                             } catch (\Throwable $e) {
                                 Notification::make()
-                                    ->title('Referans senkronu başarısız')
+                                    ->title('Referenzsynchronisation fehlgeschlagen')
                                     ->body($e->getMessage())
                                     ->danger()
                                     ->persistent()
@@ -277,17 +284,17 @@ class SupplierResource extends Resource
                         }),
 
                     Tables\Actions\Action::make('lookup_sku')
-                        ->label('SKU Sorgula')
+                        ->label('SKU abfragen')
                         ->icon('heroicon-o-magnifying-glass')
                         ->color('success')
                         ->form([
                             Forms\Components\TextInput::make('sku')
-                                ->label('Plenty SKU (variation number)')
+                                ->label('Plenty-SKU (Variantennummer)')
                                 ->required()
-                                ->placeholder('örn. EB600-AP')
+                                ->placeholder('z. B. EB600-AP')
                                 ->autocomplete('off'),
                             Forms\Components\Toggle::make('force')
-                                ->label('Cache\'i atla, Plenty\'den taze çek')
+                                ->label('Cache umgehen, direkt aus Plenty laden')
                                 ->default(false),
                         ])
                         ->action(function (Supplier $record, array $data) {
@@ -297,8 +304,8 @@ class SupplierResource extends Resource
 
                                 if (! $r['found']) {
                                     Notification::make()
-                                        ->title("SKU bulunamadı: {$r['sku']}")
-                                        ->body('Plenty\'de bu SKU\'ya karşılık bir variation yok. Negative cache kaydedildi.')
+                                        ->title("SKU nicht gefunden: {$r['sku']}")
+                                        ->body('In Plenty existiert keine Variante zu dieser SKU. Negativer Cache-Eintrag wurde gespeichert.')
                                         ->warning()
                                         ->persistent()
                                         ->send();
@@ -307,26 +314,26 @@ class SupplierResource extends Resource
                                 }
 
                                 $lines = [
-                                    "Variation ID: {$r['variation_id']}",
-                                    "Item ID: {$r['item_id']}",
+                                    "Variations-ID: {$r['variation_id']}",
+                                    "Artikel-ID: {$r['item_id']}",
                                     "Name: {$r['name']}",
-                                    'Price: ' . ($r['price'] !== null
+                                    'Preis: ' . ($r['price'] !== null
                                         ? '€' . number_format($r['price'], 2)
                                             . " (priceId #{$r['price_source_id']})"
-                                        : '— (default_sales_price_id seçilmemiş)'),
-                                    'Stock: ' . ($r['stock_net'] ?? '—'),
-                                    'Active: ' . ($r['is_active'] ? '✓' : '✗ (Plenty\'de pasif)'),
+                                        : '— (default_sales_price_id nicht gesetzt)'),
+                                    'Bestand: ' . ($r['stock_net'] ?? '—'),
+                                    'Aktiv: ' . ($r['is_active'] ? '✓' : '✗ (in Plenty inaktiv)'),
                                 ];
 
                                 Notification::make()
-                                    ->title("SKU bulundu: {$r['sku']}")
+                                    ->title("SKU gefunden: {$r['sku']}")
                                     ->body(implode("\n", $lines))
                                     ->success()
                                     ->persistent()
                                     ->send();
                             } catch (\Throwable $e) {
                                 Notification::make()
-                                    ->title('SKU sorgusu hata verdi')
+                                    ->title('SKU-Abfrage fehlgeschlagen')
                                     ->body($e->getMessage())
                                     ->danger()
                                     ->persistent()
@@ -335,12 +342,12 @@ class SupplierResource extends Resource
                         }),
 
                     Tables\Actions\Action::make('view_b2b_contacts')
-                        ->label('B2B Müşterileri Görüntüle')
+                        ->label('B2B-Kunden anzeigen')
                         ->icon('heroicon-o-building-office-2')
                         ->color('primary')
-                        ->modalHeading(fn (Supplier $record) => $record->name . ' — B2B Müşteriler')
+                        ->modalHeading(fn (Supplier $record) => $record->name . ' — B2B-Kunden')
                         ->modalSubmitAction(false)
-                        ->modalCancelActionLabel('Kapat')
+                        ->modalCancelActionLabel('Schließen')
                         ->modalWidth('7xl')
                         ->modalContent(function (Supplier $record) {
                             $contacts = [];

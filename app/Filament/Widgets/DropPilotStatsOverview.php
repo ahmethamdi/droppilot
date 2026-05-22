@@ -21,30 +21,30 @@ class DropPilotStatsOverview extends Widget
         return [
             'stats' => [
                 [
-                    'label' => 'Shopify Mağazaları',
+                    'label' => 'Shopify-Shops',
                     'value' => ShopifyStore::count(),
-                    'description' => 'Bağlı dropshipping mağazaları',
+                    'description' => 'Verbundene Dropshipping-Shops',
                     'tone' => 'emerald',
                     'icon' => 'shopping-bag',
                 ],
                 [
-                    'label' => 'Aktif Tedarikçi',
+                    'label' => 'Aktive Lieferanten',
                     'value' => Supplier::where('status', 'active')->count(),
-                    'description' => 'PlentyMarkets bağlantıları',
+                    'description' => 'PlentyMarkets-Verbindungen',
                     'tone' => 'sky',
                     'icon' => 'truck',
                 ],
                 [
-                    'label' => 'Bayi (Tenant)',
+                    'label' => 'Händler (Mandanten)',
                     'value' => Tenant::where('status', 'active')->count(),
-                    'description' => 'Plenty B2B müşterileri',
+                    'description' => 'Plenty-B2B-Kunden',
                     'tone' => 'amber',
                     'icon' => 'building-office',
                 ],
                 [
-                    'label' => 'Kullanıcı',
+                    'label' => 'Benutzer',
                     'value' => User::count(),
-                    'description' => 'Sistem kullanıcıları',
+                    'description' => 'Systembenutzer',
                     'tone' => 'violet',
                     'icon' => 'users',
                 ],

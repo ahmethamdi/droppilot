@@ -16,7 +16,7 @@ class SuppliersRelationManager extends RelationManager
 {
     protected static string $relationship = 'suppliers';
 
-    protected static ?string $title = 'Bağlı Tedarikçiler';
+    protected static ?string $title = 'Verbundene Lieferanten';
 
     protected static ?string $recordTitleAttribute = 'name';
 
@@ -24,29 +24,30 @@ class SuppliersRelationManager extends RelationManager
     {
         return $form->schema([
             Forms\Components\TextInput::make('plenty_contact_id')
-                ->label('Plenty Contact ID (Rechnungsadresse)')
+                ->label('Plenty-Kontakt-ID (Rechnungsadresse)')
                 ->required()
                 ->numeric()
-                ->helperText('Bayinin bu tedarikçideki B2B müşteri ID\'si — fatura bu kayda kesilir.'),
+                ->helperText('Die B2B-Kunden-ID des Händlers bei diesem Lieferanten — die Rechnung wird auf diesen Datensatz ausgestellt.'),
 
             Forms\Components\TextInput::make('default_billing_address_id')
-                ->label('Varsayılan Fatura Adresi ID')
+                ->label('Standard-Rechnungsadressen-ID')
                 ->numeric()
-                ->helperText('Boş bırakılırsa kontaktın birincil adresi kullanılır. "Contact Doğrula" sonrası seçilebilir.'),
+                ->helperText('Bleibt das Feld leer, wird die primäre Adresse des Kontakts verwendet. Auswahl nach „Kontakt prüfen" möglich.'),
 
             Forms\Components\TextInput::make('markup_pct')
-                ->label('Markup % (raporlama)')
+                ->label('Aufschlag % (Reporting)')
                 ->numeric()
                 ->default(0)
                 ->step(0.01)
                 ->suffix('%')
-                ->helperText('Sadece raporlama; gerçek fiyatlandırma SKU başına Plenty\'den çekilir.'),
+                ->helperText('Nur für Auswertungen; die tatsächliche Preisermittlung erfolgt pro SKU live aus Plenty.'),
 
             Forms\Components\Select::make('status')
+                ->label('Status')
                 ->options([
-                    'pending' => 'Onay bekliyor',
-                    'active' => 'Aktif',
-                    'suspended' => 'Askıya alınmış',
+                    'pending' => 'Wartet auf Freigabe',
+                    'active' => 'Aktiv',
+                    'suspended' => 'Gesperrt',
                 ])
                 ->default('pending')
                 ->required(),
@@ -58,20 +59,20 @@ class SuppliersRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('name')
             ->columns([
-                Tables\Columns\TextColumn::make('id')->label('Supplier ID')->sortable(),
-                Tables\Columns\TextColumn::make('name')->label('Tedarikçi')->searchable(),
+                Tables\Columns\TextColumn::make('id')->label('Lieferant-ID')->sortable(),
+                Tables\Columns\TextColumn::make('name')->label('Lieferant')->searchable(),
                 Tables\Columns\TextColumn::make('pivot.plenty_contact_id')
-                    ->label('Plenty Contact ID')
+                    ->label('Plenty-Kontakt-ID')
                     ->badge()
                     ->color('primary'),
                 Tables\Columns\TextColumn::make('pivot.default_billing_address_id')
-                    ->label('Fatura Adresi ID')
+                    ->label('Rechnungsadressen-ID')
                     ->placeholder('—'),
                 Tables\Columns\TextColumn::make('pivot.markup_pct')
-                    ->label('Markup')
+                    ->label('Aufschlag')
                     ->suffix(' %'),
                 Tables\Columns\TextColumn::make('pivot.status')
-                    ->label('Bağlantı Durumu')
+                    ->label('Verbindungsstatus')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'active' => 'success',
@@ -82,28 +83,29 @@ class SuppliersRelationManager extends RelationManager
             ])
             ->headerActions([
                 Tables\Actions\AttachAction::make()
-                    ->label('Tedarikçi Bağla')
+                    ->label('Lieferanten verbinden')
                     ->preloadRecordSelect()
-                    ->recordSelect(fn ($select) => $select->placeholder('Tedarikçi seçin'))
+                    ->recordSelect(fn ($select) => $select->placeholder('Lieferant auswählen'))
                     ->form(fn (Tables\Actions\AttachAction $action) => [
                         $action->getRecordSelect(),
                         Forms\Components\TextInput::make('plenty_contact_id')
-                            ->label('Plenty Contact ID (Rechnungsadresse)')
+                            ->label('Plenty-Kontakt-ID (Rechnungsadresse)')
                             ->required()
                             ->numeric(),
                         Forms\Components\TextInput::make('default_billing_address_id')
-                            ->label('Fatura Adresi ID (opsiyonel)')
+                            ->label('Rechnungsadressen-ID (optional)')
                             ->numeric(),
                         Forms\Components\TextInput::make('markup_pct')
-                            ->label('Markup %')
+                            ->label('Aufschlag %')
                             ->numeric()
                             ->default(0)
                             ->step(0.01),
                         Forms\Components\Select::make('status')
+                            ->label('Status')
                             ->options([
-                                'pending' => 'Onay bekliyor',
-                                'active' => 'Aktif',
-                                'suspended' => 'Askıya alınmış',
+                                'pending' => 'Wartet auf Freigabe',
+                                'active' => 'Aktiv',
+                                'suspended' => 'Gesperrt',
                             ])
                             ->default('active')
                             ->required(),
@@ -111,7 +113,7 @@ class SuppliersRelationManager extends RelationManager
             ])
             ->actions([
                 Tables\Actions\Action::make('verify_contact')
-                    ->label('Contact Doğrula')
+                    ->label('Kontakt prüfen')
                     ->icon('heroicon-o-shield-check')
                     ->color('warning')
                     ->action(function (Model $record) {
@@ -120,7 +122,7 @@ class SuppliersRelationManager extends RelationManager
 
                         if (! $contactId) {
                             Notification::make()
-                                ->title('Plenty Contact ID girilmemiş')
+                                ->title('Plenty-Kontakt-ID wurde nicht eingegeben')
                                 ->danger()->send();
 
                             return;
@@ -129,7 +131,7 @@ class SuppliersRelationManager extends RelationManager
                         $result = (new PlentyClient($record))->verifyContact($contactId);
 
                         $notification = Notification::make()
-                            ->title($result['ok'] ? 'Contact doğrulandı' : 'Contact doğrulanamadı')
+                            ->title($result['ok'] ? 'Kontakt bestätigt' : 'Kontakt konnte nicht bestätigt werden')
                             ->body($result['message']);
 
                         $result['ok']
@@ -138,7 +140,7 @@ class SuppliersRelationManager extends RelationManager
                     }),
 
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DetachAction::make()->label('Bağlantıyı Kaldır'),
+                Tables\Actions\DetachAction::make()->label('Verbindung entfernen'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([

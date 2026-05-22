@@ -43,19 +43,18 @@ class EditShopifyStore extends EditRecord
         $supplier = Supplier::find($supplierId);
         if (! $supplier) {
             Notification::make()
-                ->title('Tedarikçi bulunamadı')
+                ->title('Lieferant nicht gefunden')
                 ->danger()
                 ->send();
 
             return;
         }
 
-        // Plenty'den contact bilgisini çek
         try {
             $contact = (new PlentyClient($supplier))->getContact((int) $contactId);
         } catch (\Throwable $e) {
             Notification::make()
-                ->title('Plenty contact çekilemedi')
+                ->title('Plenty-Kontakt konnte nicht geladen werden')
                 ->body($e->getMessage())
                 ->danger()
                 ->persistent()
@@ -66,7 +65,7 @@ class EditShopifyStore extends EditRecord
 
         if (! $contact) {
             Notification::make()
-                ->title("Plenty contact #{$contactId} bulunamadı")
+                ->title("Plenty-Kontakt #{$contactId} nicht gefunden")
                 ->danger()
                 ->send();
 
@@ -110,8 +109,8 @@ class EditShopifyStore extends EditRecord
         ]);
 
         Notification::make()
-            ->title('Eşleştirme kaydedildi')
-            ->body("{$displayName} — Plenty contact #{$contactId} → {$supplier->name}")
+            ->title('Zuordnung gespeichert')
+            ->body("{$displayName} — Plenty-Kontakt #{$contactId} → {$supplier->name}")
             ->success()
             ->send();
     }

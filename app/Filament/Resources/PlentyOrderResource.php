@@ -18,15 +18,15 @@ class PlentyOrderResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-clipboard-document-check';
 
-    protected static ?string $navigationGroup = 'Operasyon';
+    protected static ?string $navigationGroup = 'Betrieb';
 
     protected static ?int $navigationSort = 10;
 
-    protected static ?string $label = 'Sipariş';
+    protected static ?string $label = 'Bestellung';
 
-    protected static ?string $pluralLabel = 'Siparişler';
+    protected static ?string $pluralLabel = 'Bestellungen';
 
-    protected static ?string $navigationLabel = 'Siparişler (Plenty)';
+    protected static ?string $navigationLabel = 'Bestellungen (Plenty)';
 
     public static function getNavigationBadge(): ?string
     {
@@ -52,14 +52,14 @@ class PlentyOrderResource extends Resource
                     ->weight('semibold'),
 
                 Tables\Columns\TextColumn::make('shopifyStore.name')
-                    ->label('Mağaza')
+                    ->label('Shop')
                     ->badge()
                     ->color('gray')
                     ->limit(28)
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('plenty_order_id')
-                    ->label('Plenty Auftrag #')
+                    ->label('Plenty-Auftrag #')
                     ->placeholder('—')
                     ->copyable()
                     ->formatStateUsing(fn ($state) => $state ? "#{$state}" : null)
@@ -67,12 +67,12 @@ class PlentyOrderResource extends Resource
                     ->color('success'),
 
                 Tables\Columns\TextColumn::make('state')
-                    ->label('Durum')
+                    ->label('Status')
                     ->badge()
                     ->formatStateUsing(fn (string $state) => match ($state) {
-                        'success' => '✓ Gönderildi',
-                        'failed' => '✗ Başarısız',
-                        'pending' => '⏳ Beklemede',
+                        'success' => '✓ Übertragen',
+                        'failed' => '✗ Fehlgeschlagen',
+                        'pending' => '⏳ Ausstehend',
                         default => $state,
                     })
                     ->color(fn (string $state) => match ($state) {
@@ -83,14 +83,14 @@ class PlentyOrderResource extends Resource
                     }),
 
                 Tables\Columns\TextColumn::make('items_count')
-                    ->label('Kalem')
+                    ->label('Positionen')
                     ->numeric()
                     ->alignCenter()
                     ->placeholder('—')
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('skipped_count')
-                    ->label('Atlanan')
+                    ->label('Übersprungen')
                     ->numeric()
                     ->alignCenter()
                     ->color(fn ($state) => $state > 0 ? 'warning' : 'gray')
@@ -98,32 +98,32 @@ class PlentyOrderResource extends Resource
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('total')
-                    ->label('Tutar')
+                    ->label('Betrag')
                     ->money(fn (PlentyOrder $r) => $r->currency ?: 'EUR')
                     ->alignEnd()
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('attempts')
-                    ->label('Deneme')
+                    ->label('Versuche')
                     ->numeric()
                     ->alignCenter()
                     ->color(fn ($state) => $state > 1 ? 'warning' : 'gray')
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('pushed_at')
-                    ->label('Gönderim')
+                    ->label('Übertragen am')
                     ->dateTime('d.m.Y H:i')
                     ->placeholder('—')
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('created_at')
-                    ->label('İlk Deneme')
+                    ->label('Erster Versuch')
                     ->dateTime('d.m.Y H:i')
                     ->toggleable(isToggledHiddenByDefault: true)
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('error')
-                    ->label('Hata')
+                    ->label('Fehler')
                     ->limit(60)
                     ->tooltip(fn (PlentyOrder $r) => $r->error)
                     ->color('danger')
@@ -132,43 +132,43 @@ class PlentyOrderResource extends Resource
             ->defaultSort('id', 'desc')
             ->filters([
                 Tables\Filters\SelectFilter::make('state')
-                    ->label('Durum')
+                    ->label('Status')
                     ->options([
-                        'success' => '✓ Gönderildi',
-                        'failed' => '✗ Başarısız',
-                        'pending' => '⏳ Beklemede',
+                        'success' => '✓ Übertragen',
+                        'failed' => '✗ Fehlgeschlagen',
+                        'pending' => '⏳ Ausstehend',
                     ]),
                 Tables\Filters\SelectFilter::make('shopify_store_id')
-                    ->label('Mağaza')
+                    ->label('Shop')
                     ->relationship('shopifyStore', 'name')
                     ->searchable(),
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\Action::make('retry')
-                        ->label('Plenty\'ye Tekrar Gönder')
+                        ->label('Erneut an Plenty senden')
                         ->icon('heroicon-o-arrow-path')
                         ->color('warning')
                         ->visible(fn (PlentyOrder $r) => $r->state !== 'success')
                         ->requiresConfirmation()
-                        ->modalDescription('Bu Shopify siparişi Plenty\'ye yeniden gönderilecek. Aynı SKU lookup ve fiyatlandırma uygulanır.')
+                        ->modalDescription('Diese Shopify-Bestellung wird erneut an Plenty gesendet. Es werden die gleiche SKU-Suche und Preisermittlung angewendet.')
                         ->action(function (PlentyOrder $r) {
                             $store = $r->shopifyStore;
                             if (! $store) {
-                                Notification::make()->title('Mağaza bulunamadı')->danger()->send();
+                                Notification::make()->title('Shop nicht gefunden')->danger()->send();
                                 return;
                             }
                             try {
                                 $order = (new ShopifyClient($store))->getOrder((int) $r->shopify_order_id);
                                 $updated = app(PushOrderToPlenty::class)($store, $order);
                                 Notification::make()
-                                    ->title("Plenty Auftrag #{$updated->plenty_order_id} oluşturuldu")
-                                    ->body("{$updated->items_count} kalem, {$updated->skipped_count} atlandı.")
+                                    ->title("Plenty-Auftrag #{$updated->plenty_order_id} angelegt")
+                                    ->body("{$updated->items_count} Positionen, {$updated->skipped_count} übersprungen.")
                                     ->success()
                                     ->send();
                             } catch (\Throwable $e) {
                                 Notification::make()
-                                    ->title('Plenty\'ye gönderim başarısız')
+                                    ->title('Übertragung an Plenty fehlgeschlagen')
                                     ->body(mb_substr($e->getMessage(), 0, 500))
                                     ->danger()
                                     ->persistent()
@@ -177,20 +177,20 @@ class PlentyOrderResource extends Resource
                         }),
 
                     Tables\Actions\Action::make('view_payload')
-                        ->label('Payload\'ı Gör')
+                        ->label('Payload anzeigen')
                         ->icon('heroicon-o-code-bracket')
                         ->color('gray')
-                        ->modalHeading(fn (PlentyOrder $r) => "{$r->shopify_order_name} — Plenty Payload")
+                        ->modalHeading(fn (PlentyOrder $r) => "{$r->shopify_order_name} — Plenty-Payload")
                         ->modalSubmitAction(false)
-                        ->modalCancelActionLabel('Kapat')
+                        ->modalCancelActionLabel('Schließen')
                         ->modalWidth('5xl')
                         ->modalContent(fn (PlentyOrder $r) => view('filament.modals.plenty-order-payload', [
                             'order' => $r,
                         ])),
                 ]),
             ])
-            ->emptyStateHeading('Henüz Plenty\'ye sipariş gönderilmedi')
-            ->emptyStateDescription('Shopify mağazalarında "Siparişleri Görüntüle" > "Plenty\'ye Gönder" butonunu kullan.')
+            ->emptyStateHeading('Noch keine Bestellungen an Plenty übertragen')
+            ->emptyStateDescription('In den Shopify-Shops „Bestellungen anzeigen" > „An Plenty senden" verwenden.')
             ->emptyStateIcon('heroicon-o-clipboard-document-check');
     }
 

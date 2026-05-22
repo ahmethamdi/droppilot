@@ -1,24 +1,24 @@
 <div class="space-y-4">
     @if($error)
         <div class="rounded-lg bg-danger-50 p-4 text-sm text-danger-700 dark:bg-danger-950/50 dark:text-danger-400">
-            Plenty'den veri alınamadı: {{ $error }}
+            Daten konnten nicht aus Plenty geladen werden: {{ $error }}
         </div>
     @elseif(empty($contacts))
         <div class="rounded-lg bg-warning-50 p-6 text-sm text-warning-700 dark:bg-warning-950/50 dark:text-warning-400">
-            <p class="font-semibold">B2B müşteri bulunamadı.</p>
+            <p class="font-semibold">Keine B2B-Kunden gefunden.</p>
             <p class="mt-2 text-xs">
                 @if(empty($supplier->b2b_class_ids))
-                    Bu tedarikçide <strong>B2B Plenty class ID'leri</strong> tanımlı değil. Tedarikçi düzenleme ekranında "B2B Müşteri Sınıfları" bölümünden ekleyin (ör. <code>12, 50</code>).
+                    Für diesen Lieferanten sind keine <strong>B2B-Plenty-Klassen-IDs</strong> hinterlegt. Im Bearbeitungsformular unter „B2B-Kundenklassen" hinzufügen (z. B. <code>12, 50</code>).
                 @else
-                    Tanımlı class'larda ({{ implode(', ', $supplier->b2b_class_ids) }}) şirket adı dolu olan müşteri bulunamadı.
+                    In den definierten Klassen ({{ implode(', ', $supplier->b2b_class_ids) }}) wurden keine Kunden mit ausgefülltem Firmennamen gefunden.
                 @endif
             </p>
         </div>
     @else
         <div class="rounded-lg bg-info-50 p-3 text-xs text-info-700 dark:bg-info-950/50 dark:text-info-400">
-            {{ count($contacts) }} B2B müşteri yüklendi (canlı Plenty API).
+            {{ count($contacts) }} B2B-Kunden geladen (Live-Daten aus Plenty).
             @if(! empty($supplier->b2b_class_ids))
-                Filter: classId IN ({{ implode(', ', $supplier->b2b_class_ids) }}) + companyName non-empty.
+                Filter: classId IN ({{ implode(', ', $supplier->b2b_class_ids) }}) + Firmenname nicht leer.
             @endif
         </div>
 
@@ -26,12 +26,12 @@
             <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-white/10">
                 <thead class="bg-gray-50 dark:bg-white/5">
                     <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                        <th class="px-3 py-2">Plenty ID</th>
-                        <th class="px-3 py-2">Şirket</th>
-                        <th class="px-3 py-2">İletişim Kişisi</th>
-                        <th class="px-3 py-2">E-posta</th>
-                        <th class="px-3 py-2">Class</th>
-                        <th class="px-3 py-2">Son Sipariş</th>
+                        <th class="px-3 py-2">Plenty-ID</th>
+                        <th class="px-3 py-2">Firma</th>
+                        <th class="px-3 py-2">Ansprechpartner</th>
+                        <th class="px-3 py-2">E-Mail</th>
+                        <th class="px-3 py-2">Klasse</th>
+                        <th class="px-3 py-2">Letzte Bestellung</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-white/10">

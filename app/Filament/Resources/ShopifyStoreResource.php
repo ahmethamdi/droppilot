@@ -20,65 +20,67 @@ class ShopifyStoreResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-shopping-bag';
 
-    protected static ?string $navigationGroup = 'Multi-Tenancy';
+    protected static ?string $navigationGroup = 'Mandanten';
 
     protected static ?string $recordTitleAttribute = 'name';
 
     protected static ?int $navigationSort = 25;
 
-    protected static ?string $label = 'Shopify Mağaza';
+    protected static ?string $label = 'Shopify-Shop';
 
-    protected static ?string $pluralLabel = 'Shopify Mağazalar';
+    protected static ?string $pluralLabel = 'Shopify-Shops';
+
+    protected static ?string $navigationLabel = 'Shopify-Shops';
 
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('Mağaza Bilgileri')
+            Forms\Components\Section::make('Shop-Informationen')
                 ->columns(2)
                 ->schema([
                     Forms\Components\TextInput::make('name')
-                        ->label('Shopify Domain')
+                        ->label('Shopify-Domain')
                         ->disabled()
-                        ->helperText('OAuth ile bağlandığında otomatik dolar.'),
+                        ->helperText('Wird beim OAuth-Login automatisch befüllt.'),
 
                     Forms\Components\TextInput::make('email')
-                        ->label('Mağaza E-postası')
+                        ->label('Shop-E-Mail')
                         ->disabled(),
 
                     Forms\Components\DateTimePicker::make('installed_at')
-                        ->label('Yüklenme Zamanı')
+                        ->label('Installiert am')
                         ->disabled(),
 
                     Forms\Components\Placeholder::make('current_link')
-                        ->label('Mevcut Eşleşme')
+                        ->label('Aktuelle Zuordnung')
                         ->content(function (?ShopifyStore $record) {
                             if (! $record || ! $record->plenty_contact_id) {
-                                return '— Henüz Plenty müşterisine eşlenmemiş.';
+                                return '— Noch keinem Plenty-Kunden zugeordnet.';
                             }
                             $supplier = $record->supplier;
                             $tenant = $record->tenant;
                             $lines = [];
                             if ($tenant) {
-                                $lines[] = "Bayi: {$tenant->name}";
+                                $lines[] = "Händler: {$tenant->name}";
                             }
                             if ($supplier) {
-                                $lines[] = "Tedarikçi: {$supplier->name}";
+                                $lines[] = "Lieferant: {$supplier->name}";
                             }
-                            $lines[] = "Plenty contact: #{$record->plenty_contact_id}";
+                            $lines[] = "Plenty-Kontakt: #{$record->plenty_contact_id}";
 
                             return implode("\n", $lines);
                         }),
                 ]),
 
-            Forms\Components\Section::make('Bayi Eşleştirmesi')
-                ->description('Bu mağazadan sipariş geldiğinde hangi bayinin (Plenty B2B müşterisinin) hesabına fatura kesilecek. Dropdown\'da aktif tedarikçilerin B2B sınıflarındaki tüm müşteriler yüklü gelir.')
+            Forms\Components\Section::make('Händler-Zuordnung')
+                ->description('Welcher Händler (Plenty-B2B-Kunde) wird abgerechnet, wenn dieser Shop eine Bestellung erhält? Im Dropdown sind alle Kunden aus den B2B-Klassen aktiver Lieferanten verfügbar.')
                 ->schema([
                     Forms\Components\Select::make('mapping_bayi')
-                        ->label('Bayi')
-                        ->placeholder('Şirket adı veya e-posta ile ara...')
+                        ->label('Händler')
+                        ->placeholder('Nach Firmenname oder E-Mail suchen ...')
                         ->searchable()
                         ->dehydrated(false)
-                        ->helperText('Sonuç formatı: "Şirket — e-posta (Tedarikçi #PlentyID)". Tedarikçi başına 200 sonuca kadar.')
+                        ->helperText('Ergebnisformat: „Firma — E-Mail (Lieferant #PlentyID)". Bis zu 200 Treffer pro Lieferant.')
                         ->getSearchResultsUsing(function (string $search) {
                             $needle = mb_strtolower(trim($search));
                             if (mb_strlen($needle) < 2) {
@@ -198,13 +200,13 @@ class ShopifyStoreResource extends Resource
                 ])
                 ->hiddenOn('create'),
 
-            Forms\Components\Section::make('Plenty Sipariş Ayarları')
-                ->description('Bu mağazadan gelen siparişler Plenty Auftrag olarak düşerken kullanılacak ayarlar. Bayinin satış fiyatı tipi farklı olabilir (Level 5, B2B Standard, vb.) — burada elle seçiyorsun.')
+            Forms\Components\Section::make('Plenty-Auftragseinstellungen')
+                ->description('Diese Werte werden verwendet, wenn Bestellungen dieses Shops in Plenty als Auftrag angelegt werden. Der Verkaufspreistyp kann pro Händler abweichen (Level 5, B2B Standard, etc.) — hier wird er manuell gesetzt.')
                 ->columns(2)
                 ->hiddenOn('create')
                 ->schema([
                     Forms\Components\Select::make('plenty_sales_price_id')
-                        ->label('Satış Fiyatı Tipi')
+                        ->label('Verkaufspreistyp')
                         ->options(fn (?ShopifyStore $record) => static::optionsForKind(
                             $record,
                             \App\Models\SupplierReference::KIND_SALES_PRICE,
@@ -212,11 +214,11 @@ class ShopifyStoreResource extends Resource
                         ))
                         ->searchable()
                         ->preload()
-                        ->placeholder('Bayinin fiyat tipini seçin (örn. Level 5)')
-                        ->helperText('Bu mağazadan gelen siparişlerin Plenty\'deki birim fiyatı bu tipten alınır. SKU başına Plenty\'den canlı çekilir.'),
+                        ->placeholder('Preistyp des Händlers wählen (z. B. Level 5)')
+                        ->helperText('Der Einzelpreis im Plenty-Auftrag wird aus diesem Preistyp pro SKU live aus Plenty geladen.'),
 
                     Forms\Components\Select::make('plenty_warehouse_id')
-                        ->label('Depo')
+                        ->label('Lager')
                         ->options(fn (?ShopifyStore $record) => static::optionsForKind(
                             $record,
                             \App\Models\SupplierReference::KIND_WAREHOUSE,
@@ -224,10 +226,10 @@ class ShopifyStoreResource extends Resource
                         ))
                         ->searchable()
                         ->preload()
-                        ->placeholder('Sevkıyat deposu (örn. Hilden)'),
+                        ->placeholder('Versandlager (z. B. Hilden)'),
 
                     Forms\Components\Select::make('plenty_order_status_id')
-                        ->label('Yeni Sipariş Statüsü')
+                        ->label('Status für neue Aufträge')
                         ->options(fn (?ShopifyStore $record) => static::optionsForKind(
                             $record,
                             \App\Models\SupplierReference::KIND_ORDER_STATUS,
@@ -235,19 +237,19 @@ class ShopifyStoreResource extends Resource
                         ))
                         ->searchable()
                         ->preload()
-                        ->placeholder('Yeni Auftrag\'lar bu statüde açılır')
-                        ->helperText('Boş bırakılırsa tedarikçinin default sipariş statüsü kullanılır.'),
+                        ->placeholder('Neue Aufträge werden in diesem Status angelegt')
+                        ->helperText('Bleibt das Feld leer, wird der Standard-Auftragsstatus des Lieferanten verwendet.'),
                 ]),
 
-            Forms\Components\Section::make('Teknik Bilgi')
+            Forms\Components\Section::make('Technische Informationen')
                 ->columns(2)
                 ->collapsed()
                 ->schema([
                     Forms\Components\TextInput::make('shopify_offline_access_token_expires_at')
-                        ->label('Token Süresi')
+                        ->label('Token-Gültigkeit')
                         ->disabled(),
                     Forms\Components\Textarea::make('scopes')
-                        ->label('Verilen İzinler')
+                        ->label('Erteilte Berechtigungen')
                         ->disabled()
                         ->rows(2),
                 ]),
@@ -260,44 +262,44 @@ class ShopifyStoreResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('id')->label('ID')->sortable(),
                 Tables\Columns\TextColumn::make('name')
-                    ->label('Shopify Domain')
+                    ->label('Shopify-Domain')
                     ->searchable()
                     ->sortable()
                     ->copyable(),
                 Tables\Columns\TextColumn::make('email')
-                    ->label('E-posta')
+                    ->label('E-Mail')
                     ->searchable()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('tenant.name')
-                    ->label('Bayi')
-                    ->placeholder('— bağlı değil')
+                    ->label('Händler')
+                    ->placeholder('— nicht verbunden')
                     ->badge()
                     ->color(fn ($state) => $state ? 'success' : 'warning'),
                 Tables\Columns\TextColumn::make('shopify_offline_access_token_expires_at')
-                    ->label('Token Süresi')
+                    ->label('Token-Gültigkeit')
                     ->dateTime('d.m.Y H:i')
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('created_at')
-                    ->label('Yüklendi')
+                    ->label('Installiert')
                     ->dateTime('d.m.Y H:i')
                     ->sortable(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('tenant_id')
-                    ->label('Bayiye Göre')
+                    ->label('Nach Händler')
                     ->relationship('tenant', 'name'),
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\Action::make('test_connection')
-                        ->label('Bağlantıyı Test Et')
+                        ->label('Verbindung testen')
                         ->icon('heroicon-o-bolt')
                         ->color('warning')
                         ->action(function (ShopifyStore $record) {
                             $result = (new ShopifyClient($record))->testConnection();
 
                             $notification = Notification::make()
-                                ->title($result['ok'] ? 'Shopify bağlantısı başarılı' : 'Shopify bağlantısı başarısız')
+                                ->title($result['ok'] ? 'Shopify-Verbindung erfolgreich' : 'Shopify-Verbindung fehlgeschlagen')
                                 ->body($result['message']);
 
                             $result['ok']
@@ -306,12 +308,12 @@ class ShopifyStoreResource extends Resource
                         }),
 
                     Tables\Actions\Action::make('view_orders')
-                        ->label('Siparişleri Görüntüle')
+                        ->label('Bestellungen anzeigen')
                         ->icon('heroicon-o-clipboard-document-list')
                         ->color('info')
-                        ->modalHeading(fn (ShopifyStore $record) => $record->name . ' — Son Siparişler')
+                        ->modalHeading(fn (ShopifyStore $record) => $record->name . ' — Letzte Bestellungen')
                         ->modalSubmitAction(false)
-                        ->modalCancelActionLabel('Kapat')
+                        ->modalCancelActionLabel('Schließen')
                         ->modalWidth('7xl')
                         ->modalContent(function (ShopifyStore $record) {
                             try {
@@ -341,12 +343,12 @@ class ShopifyStoreResource extends Resource
                         }),
 
                     Tables\Actions\Action::make('view_customers')
-                        ->label('Müşterileri Görüntüle')
+                        ->label('Kunden anzeigen')
                         ->icon('heroicon-o-users')
                         ->color('info')
-                        ->modalHeading(fn (ShopifyStore $record) => $record->name . ' — Müşteriler')
+                        ->modalHeading(fn (ShopifyStore $record) => $record->name . ' — Kunden')
                         ->modalSubmitAction(false)
-                        ->modalCancelActionLabel('Kapat')
+                        ->modalCancelActionLabel('Schließen')
                         ->modalWidth('7xl')
                         ->modalContent(function (ShopifyStore $record) {
                             try {
@@ -362,11 +364,11 @@ class ShopifyStoreResource extends Resource
                             ]);
                         }),
 
-                    Tables\Actions\EditAction::make()->label('Düzenle / Bayi Eşle'),
+                    Tables\Actions\EditAction::make()->label('Bearbeiten / Händler zuordnen'),
                 ]),
             ])
-            ->emptyStateHeading('Henüz bağlı Shopify mağazası yok')
-            ->emptyStateDescription('Bir bayi DropPilot\'a Shopify mağazasını bağladığında burada görünür.')
+            ->emptyStateHeading('Noch keine verbundenen Shopify-Shops')
+            ->emptyStateDescription('Sobald ein Händler seinen Shopify-Shop mit DropPilot verbindet, erscheint er hier.')
             ->emptyStateIcon('heroicon-o-shopping-bag')
             ->defaultSort('id', 'desc');
     }

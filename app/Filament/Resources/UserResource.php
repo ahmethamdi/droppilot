@@ -18,50 +18,56 @@ class UserResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-users';
 
-    protected static ?string $navigationGroup = 'Multi-Tenancy';
+    protected static ?string $navigationGroup = 'Mandanten';
 
     protected static ?string $recordTitleAttribute = 'email';
 
     protected static ?int $navigationSort = 30;
 
+    protected static ?string $label = 'Benutzer';
+
+    protected static ?string $pluralLabel = 'Benutzer';
+
+    protected static ?string $navigationLabel = 'Benutzer';
+
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('Kullanıcı')
+            Forms\Components\Section::make('Benutzer')
                 ->columns(2)
                 ->schema([
                     Forms\Components\TextInput::make('name')
-                        ->label('Ad Soyad')
+                        ->label('Vor- und Nachname')
                         ->required()
                         ->maxLength(255),
 
                     Forms\Components\TextInput::make('email')
-                        ->label('E-posta')
+                        ->label('E-Mail')
                         ->email()
                         ->required()
                         ->maxLength(255)
                         ->unique(ignoreRecord: true),
 
                     Forms\Components\TextInput::make('password')
-                        ->label('Şifre')
+                        ->label('Passwort')
                         ->password()
                         ->revealable()
                         ->maxLength(255)
                         ->dehydrateStateUsing(fn ($state) => filled($state) ? Hash::make($state) : null)
                         ->dehydrated(fn ($state) => filled($state))
                         ->required(fn (string $operation) => $operation === 'create')
-                        ->helperText('Düzenlemede boş bırakılırsa eski şifre korunur.'),
+                        ->helperText('Beim Bearbeiten leer lassen, um das alte Passwort beizubehalten.'),
 
                     Forms\Components\DateTimePicker::make('email_verified_at')
-                        ->label('E-posta Doğrulandı')
+                        ->label('E-Mail bestätigt am')
                         ->default(now()),
                 ]),
 
-            Forms\Components\Section::make('Roller & Bayi')
+            Forms\Components\Section::make('Rollen & Händler')
                 ->columns(2)
                 ->schema([
                     Forms\Components\Select::make('roles')
-                        ->label('Roller')
+                        ->label('Rollen')
                         ->multiple()
                         ->relationship('roles', 'name')
                         ->options(Role::pluck('name', 'name'))
@@ -69,7 +75,7 @@ class UserResource extends Resource
                         ->required(),
 
                     Forms\Components\Select::make('current_tenant_id')
-                        ->label('Aktif Bayi')
+                        ->label('Aktiver Händler')
                         ->relationship('currentTenant', 'name')
                         ->searchable()
                         ->preload()
@@ -86,14 +92,14 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('name')->searchable()->sortable(),
                 Tables\Columns\TextColumn::make('email')->searchable()->sortable(),
                 Tables\Columns\TextColumn::make('roles.name')
-                    ->label('Roller')
+                    ->label('Rollen')
                     ->badge()
                     ->separator(','),
                 Tables\Columns\TextColumn::make('currentTenant.name')
-                    ->label('Aktif Bayi')
+                    ->label('Aktiver Händler')
                     ->toggleable(),
                 Tables\Columns\IconColumn::make('email_verified_at')
-                    ->label('Doğrulandı')
+                    ->label('Bestätigt')
                     ->boolean(),
                 Tables\Columns\TextColumn::make('created_at')->dateTime('d.m.Y H:i')->sortable()->toggleable(),
             ])

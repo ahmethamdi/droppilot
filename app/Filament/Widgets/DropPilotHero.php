@@ -17,10 +17,10 @@ class DropPilotHero extends Widget
     {
         $hour = (int) now()->format('H');
         $greeting = match (true) {
-            $hour < 5 => 'İyi geceler',
-            $hour < 12 => 'Günaydın',
-            $hour < 18 => 'İyi günler',
-            default => 'İyi akşamlar',
+            $hour < 5 => 'Gute Nacht',
+            $hour < 11 => 'Guten Morgen',
+            $hour < 18 => 'Guten Tag',
+            default => 'Guten Abend',
         };
 
         return [

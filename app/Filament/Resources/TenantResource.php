@@ -17,20 +17,26 @@ class TenantResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-building-storefront';
 
-    protected static ?string $navigationGroup = 'Multi-Tenancy';
+    protected static ?string $navigationGroup = 'Mandanten';
 
     protected static ?string $recordTitleAttribute = 'name';
 
     protected static ?int $navigationSort = 10;
 
+    protected static ?string $label = 'Händler';
+
+    protected static ?string $pluralLabel = 'Händler';
+
+    protected static ?string $navigationLabel = 'Händler';
+
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('Bayi Bilgileri')
+            Forms\Components\Section::make('Händler-Informationen')
                 ->columns(2)
                 ->schema([
                     Forms\Components\TextInput::make('name')
-                        ->label('Bayi Adı')
+                        ->label('Händlername')
                         ->required()
                         ->maxLength(255)
                         ->live(onBlur: true)
@@ -44,13 +50,13 @@ class TenantResource extends Resource
                         ->required()
                         ->maxLength(255)
                         ->unique(ignoreRecord: true)
-                        ->helperText('URL-friendly tekil tanımlayıcı'),
+                        ->helperText('URL-freundlicher eindeutiger Bezeichner'),
 
                     Forms\Components\Select::make('status')
                         ->options([
-                            'active' => 'Aktif',
-                            'pending' => 'Onay bekliyor',
-                            'suspended' => 'Askıya alınmış',
+                            'active' => 'Aktiv',
+                            'pending' => 'Wartet auf Freigabe',
+                            'suspended' => 'Gesperrt',
                         ])
                         ->default('active')
                         ->required()
@@ -59,24 +65,24 @@ class TenantResource extends Resource
                     Forms\Components\TextInput::make('plan')
                         ->maxLength(255)
                         ->placeholder('starter / pro / enterprise')
-                        ->helperText('Opsiyonel — billing modülü için'),
+                        ->helperText('Optional — für das Billing-Modul'),
                 ]),
 
-            Forms\Components\Section::make('Üyeler')
-                ->description('Bayiye bağlı kullanıcılar (sadece kayıt sonrası eklenebilir).')
+            Forms\Components\Section::make('Mitglieder')
+                ->description('An den Händler gebundene Benutzer (erst nach Anlage hinzufügbar).')
                 ->schema([
                     Forms\Components\Placeholder::make('users_info')
                         ->label('')
                         ->content(function ($record) {
                             if (! $record) {
-                                return 'Kaydı oluşturduktan sonra üye ekleyebilirsiniz.';
+                                return 'Mitglieder können nach dem Anlegen des Datensatzes hinzugefügt werden.';
                             }
 
                             $list = $record->users
                                 ->map(fn ($u) => "• {$u->name} <{$u->email}> ({$u->pivot->role})")
                                 ->implode("\n");
 
-                            return $list ?: 'Henüz üye yok.';
+                            return $list ?: 'Noch keine Mitglieder vorhanden.';
                         }),
                 ])
                 ->hiddenOn('create'),
@@ -100,18 +106,18 @@ class TenantResource extends Resource
                     }),
                 Tables\Columns\TextColumn::make('users_count')
                     ->counts('users')
-                    ->label('Üye'),
+                    ->label('Mitglieder'),
                 Tables\Columns\TextColumn::make('suppliers_count')
                     ->counts('suppliers')
-                    ->label('Tedarikçi'),
+                    ->label('Lieferanten'),
                 Tables\Columns\TextColumn::make('plan')->toggleable(),
                 Tables\Columns\TextColumn::make('created_at')->dateTime('d.m.Y H:i')->sortable()->toggleable(),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')->options([
-                    'active' => 'Aktif',
-                    'pending' => 'Onay bekliyor',
-                    'suspended' => 'Askıya alınmış',
+                    'active' => 'Aktiv',
+                    'pending' => 'Wartet auf Freigabe',
+                    'suspended' => 'Gesperrt',
                 ]),
             ])
             ->actions([

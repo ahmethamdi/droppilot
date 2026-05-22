@@ -16,20 +16,20 @@ class ViewProduct extends ViewRecord
     {
         return [
             Actions\Action::make('sync_variations')
-                ->label('Variationları Plenty\'den Çek')
+                ->label('Varianten aus Plenty laden')
                 ->icon('heroicon-o-arrow-path')
                 ->color('info')
                 ->action(function () {
                     try {
                         $n = (new PlentyClient($this->record->supplier))->syncItemVariations($this->record);
                         Notification::make()
-                            ->title('Variationlar yenilendi')
-                            ->body("{$n} variation alındı")
+                            ->title('Varianten aktualisiert')
+                            ->body("{$n} Varianten geladen")
                             ->success()
                             ->send();
                     } catch (\Throwable $e) {
                         Notification::make()
-                            ->title('Variation senkronu başarısız')
+                            ->title('Variantensynchronisation fehlgeschlagen')
                             ->body($e->getMessage())
                             ->danger()
                             ->persistent()

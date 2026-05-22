@@ -49,7 +49,13 @@ class AdminPanelProvider extends PanelProvider
             ->defaultThemeMode(ThemeMode::Light)
             ->sidebarCollapsibleOnDesktop()
             ->navigationGroups([
-                NavigationGroup::make('Multi-Tenancy')
+                NavigationGroup::make('Betrieb')
+                    ->icon('heroicon-o-rocket-launch')
+                    ->collapsible(false),
+                NavigationGroup::make('Katalog')
+                    ->icon('heroicon-o-cube')
+                    ->collapsible(false),
+                NavigationGroup::make('Mandanten')
                     ->icon('heroicon-o-building-office-2')
                     ->collapsible(false),
             ])

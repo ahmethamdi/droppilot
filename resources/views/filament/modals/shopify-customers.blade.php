@@ -1,23 +1,23 @@
 <div class="space-y-4">
     @if($error)
         <div class="rounded-lg bg-danger-50 p-4 text-sm text-danger-700 dark:bg-danger-950/50 dark:text-danger-400">
-            Shopify'dan veri alınamadı: {{ $error }}
+            Daten konnten nicht aus Shopify geladen werden: {{ $error }}
         </div>
     @elseif(empty($customers))
         <div class="rounded-lg bg-gray-50 p-8 text-center text-sm text-gray-500 dark:bg-white/5">
-            Bu mağazada henüz müşteri yok.
+            In diesem Shop sind noch keine Kunden vorhanden.
         </div>
     @else
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-white/10">
                 <thead class="bg-gray-50 dark:bg-white/5">
                     <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                        <th class="px-3 py-2">Ad Soyad</th>
-                        <th class="px-3 py-2">E-posta</th>
+                        <th class="px-3 py-2">Name</th>
+                        <th class="px-3 py-2">E-Mail</th>
                         <th class="px-3 py-2">Telefon</th>
-                        <th class="px-3 py-2">Adres</th>
-                        <th class="px-3 py-2">Sipariş</th>
-                        <th class="px-3 py-2">Toplam</th>
+                        <th class="px-3 py-2">Adresse</th>
+                        <th class="px-3 py-2">Bestellungen</th>
+                        <th class="px-3 py-2">Umsatz</th>
                         <th class="px-3 py-2">Tags</th>
                     </tr>
                 </thead>
@@ -50,6 +50,6 @@
                 </tbody>
             </table>
         </div>
-        <div class="text-xs text-gray-500">{{ count($customers) }} müşteri yüklendi (canlı Shopify API).</div>
+        <div class="text-xs text-gray-500">{{ count($customers) }} Kunden geladen (Live-Daten aus Shopify).</div>
     @endif
 </div>
