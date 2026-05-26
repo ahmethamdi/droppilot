@@ -625,16 +625,26 @@ class PlentyClient
      *
      * @return array{processed:int,created:int,updated:int,variations_synced:int}
      */
-    public function syncProducts(int $maxItems = 10000, bool $packagesOnly = false): array
-    {
+    public function syncProducts(
+        int $maxItems = 10000,
+        bool $packagesOnly = false,
+        int $startPage = 1,
+        ?int $maxPages = null,
+    ): array {
         $manufacturers = $this->listManufacturers(); // id => name
         $created = 0;
         $updated = 0;
         $processed = 0;
         $variationsSynced = 0;
-        $page = 1;
+        $page = max(1, $startPage);
+        $pagesScanned = 0;
+        $lastPageSeen = $page;
 
         while ($processed < $maxItems) {
+            $lastPageSeen = $page;
+            if ($maxPages !== null && $pagesScanned >= $maxPages) {
+                break;
+            }
             $response = $this->connector()->send(new GetItemsRequest($page, 250));
             $response->throw();
             $body = $response->json();
@@ -696,7 +706,9 @@ class PlentyClient
                 }
             }
 
+            $pagesScanned++;
             if (! empty($body['isLastPage'])) {
+                $page++;
                 break;
             }
             $page++;
@@ -710,6 +722,9 @@ class PlentyClient
             'created' => $created,
             'updated' => $updated,
             'variations_synced' => $variationsSynced,
+            'last_page' => $lastPageSeen,
+            'next_page' => $page,
+            'pages_scanned' => $pagesScanned,
         ];
     }
 
