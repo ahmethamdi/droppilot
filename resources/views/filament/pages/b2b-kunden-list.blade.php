@@ -28,6 +28,20 @@
 
         @php($rows = $this->rows)
 
+        @if(!empty($this->loadErrors))
+            <div class="rounded-xl border border-danger-200 bg-danger-50 p-4 text-sm text-danger-700 dark:border-danger-800/40 dark:bg-danger-950/40 dark:text-danger-300">
+                <p class="font-semibold">Plenty-Daten konnten nicht vollständig geladen werden:</p>
+                <ul class="mt-2 list-inside list-disc space-y-1 text-xs">
+                    @foreach($this->loadErrors as $err)
+                        <li>{{ $err }}</li>
+                    @endforeach
+                </ul>
+                <p class="mt-2 text-xs">
+                    Tipp: Lieferanten-Verbindung prüfen oder „Liste aktualisieren" klicken.
+                </p>
+            </div>
+        @endif
+
         @if(empty($rows))
             <div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-12 text-center text-sm text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-gray-400">
                 <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm dark:bg-white/10">

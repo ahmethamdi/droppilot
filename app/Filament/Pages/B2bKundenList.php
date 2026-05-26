@@ -31,6 +31,9 @@ class B2bKundenList extends Page
 
     public bool $refreshing = false;
 
+    /** @var array<int, string> */
+    public array $loadErrors = [];
+
     public function mount(): void
     {
         if (! $this->supplierFilter) {
@@ -69,15 +72,24 @@ class B2bKundenList extends Page
         }
 
         $all = [];
+        $this->loadErrors = [];
+
         foreach ($suppliers as $supplier) {
             $cacheKey = $this->cacheKeyForSupplier($supplier->id);
-            $rows = Cache::remember($cacheKey, now()->addMinutes(15), function () use ($supplier) {
+
+            // Plenty hatasını cache'leme — boş listeyi cache'leyince admin hatayı asla görmez
+            $rows = Cache::get($cacheKey);
+            if ($rows === null) {
                 try {
-                    return (new PlentyClient($supplier))->listB2BContacts(1500);
+                    $rows = (new PlentyClient($supplier))->listB2BContacts(1500);
+                    if (! empty($rows)) {
+                        Cache::put($cacheKey, $rows, now()->addMinutes(15));
+                    }
                 } catch (\Throwable $e) {
-                    return [];
+                    $this->loadErrors[$supplier->id] = "{$supplier->name}: ".mb_substr($e->getMessage(), 0, 200);
+                    $rows = [];
                 }
-            });
+            }
 
             foreach ($rows as $r) {
                 $r['supplier_id'] = $supplier->id;
