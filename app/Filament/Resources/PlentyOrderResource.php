@@ -142,6 +142,31 @@ class PlentyOrderResource extends Resource
                     ->label('Shop')
                     ->relationship('shopifyStore', 'name')
                     ->searchable(),
+                Tables\Filters\SelectFilter::make('plenty_contact_id')
+                    ->label('B2B-Kunde')
+                    ->searchable()
+                    ->options(function () {
+                        return PlentyOrder::query()
+                            ->select('plenty_contact_id', 'supplier_id')
+                            ->whereNotNull('plenty_contact_id')
+                            ->distinct()
+                            ->get()
+                            ->map(function ($row) {
+                                $store = \App\Models\ShopifyStore::where('supplier_id', $row->supplier_id)
+                                    ->where('plenty_contact_id', $row->plenty_contact_id)
+                                    ->first();
+                                $tenantName = $store?->tenant?->name;
+
+                                return [
+                                    'id' => $row->plenty_contact_id,
+                                    'label' => $tenantName
+                                        ? "{$tenantName} (#{$row->plenty_contact_id})"
+                                        : "Plenty-Kontakt #{$row->plenty_contact_id}",
+                                ];
+                            })
+                            ->pluck('label', 'id')
+                            ->all();
+                    }),
             ])
             ->actions([
                 Tables\Actions\ActionGroup::make([
