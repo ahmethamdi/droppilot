@@ -5,6 +5,7 @@
         $shop = $this->linkedShop;
         $shopifyData = $this->shopifyCustomers;
         $plentyOrders = $this->plentyOrders;
+        $plentyCustomersData = $this->plentyCustomers;
     @endphp
 
     <div class="space-y-6">
@@ -81,6 +82,21 @@
                         {{ $plentyOrders->count() }}
                     </span>
                 </button>
+                <button
+                    type="button"
+                    wire:click="$set('activeTab', 'plenty_kunden')"
+                    class="rounded-t-md px-4 py-2 text-sm font-medium transition
+                        {{ $activeTab === 'plenty_kunden'
+                            ? 'bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300'
+                            : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300' }}"
+                >
+                    Plenty-Kunden
+                    @if($plentyCustomersData['ok'])
+                        <span class="ml-1 inline-flex items-center rounded-full bg-gray-100 px-1.5 text-xs font-semibold text-gray-700 dark:bg-white/10 dark:text-gray-300">
+                            {{ count($plentyCustomersData['customers']) }}
+                        </span>
+                    @endif
+                </button>
             </div>
 
             <div class="p-4">
@@ -144,6 +160,85 @@
                         </div>
                         <div class="mt-2 text-xs text-gray-500">
                             {{ count($shopifyData['customers']) }} Endkunden (Live-Daten aus Shopify, 10 Min. gecacht).
+                        </div>
+                    @endif
+                @endif
+
+                {{-- Plenty-Kunden Tab (B2B'nin Plenty Auftrag alıcıları) --}}
+                @if($activeTab === 'plenty_kunden')
+                    @if(! $plentyCustomersData['ok'])
+                        <div class="rounded-lg bg-danger-50 p-4 text-sm text-danger-700 dark:bg-danger-950/50 dark:text-danger-400">
+                            Plenty-Daten konnten nicht geladen werden: {{ $plentyCustomersData['error'] }}
+                        </div>
+                    @elseif(empty($plentyCustomersData['customers']))
+                        <div class="rounded-lg bg-gray-50 p-8 text-center text-sm text-gray-500 dark:bg-white/5">
+                            Dieser B2B-Kunde hat in Plenty noch keine Aufträge mit Endkunden.
+                        </div>
+                    @else
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 text-sm dark:divide-white/10">
+                                <thead class="bg-gray-50 dark:bg-white/5">
+                                    <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                                        <th class="px-3 py-2">Auftrag</th>
+                                        <th class="px-3 py-2">Endkunde</th>
+                                        <th class="px-3 py-2">E-Mail / Telefon</th>
+                                        <th class="px-3 py-2">PLZ / Ort</th>
+                                        <th class="px-3 py-2">Betrag</th>
+                                        <th class="px-3 py-2">Status</th>
+                                        <th class="px-3 py-2">Datum</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-200 dark:divide-white/10">
+                                    @foreach($plentyCustomersData['customers'] as $pc)
+                                        <tr>
+                                            <td class="px-3 py-2 font-mono text-gray-600 dark:text-gray-300">
+                                                #{{ $pc['order_id'] }}
+                                            </td>
+                                            <td class="px-3 py-2 text-gray-950 dark:text-white">
+                                                <div class="font-medium">{{ $pc['buyer_name'] ?: '—' }}</div>
+                                                @if($pc['buyer_company'])
+                                                    <div class="text-xs text-gray-500">{{ $pc['buyer_company'] }}</div>
+                                                @endif
+                                            </td>
+                                            <td class="px-3 py-2 text-xs text-gray-700 dark:text-gray-300">
+                                                @if($pc['buyer_email'])
+                                                    <div>{{ $pc['buyer_email'] }}</div>
+                                                @endif
+                                                @if($pc['buyer_phone'])
+                                                    <div class="text-gray-500">{{ $pc['buyer_phone'] }}</div>
+                                                @endif
+                                                @if(!$pc['buyer_email'] && !$pc['buyer_phone'])
+                                                    —
+                                                @endif
+                                            </td>
+                                            <td class="px-3 py-2 text-gray-700 dark:text-gray-300">
+                                                <span class="font-mono">{{ $pc['buyer_postal_code'] }}</span>
+                                                {{ $pc['buyer_town'] }}
+                                            </td>
+                                            <td class="px-3 py-2 font-mono text-gray-700 dark:text-gray-300">
+                                                @if($pc['total'])
+                                                    {{ number_format($pc['total'], 2, ',', '.') }} {{ $pc['currency'] ?: 'EUR' }}
+                                                @else
+                                                    —
+                                                @endif
+                                            </td>
+                                            <td class="px-3 py-2 text-xs text-gray-500">
+                                                {{ $pc['status_id'] ? '#'.rtrim(rtrim(number_format($pc['status_id'], 2, '.', ''), '0'), '.') : '—' }}
+                                            </td>
+                                            <td class="px-3 py-2 text-xs text-gray-500">
+                                                @if($pc['order_date'])
+                                                    {{ \Carbon\Carbon::parse($pc['order_date'])->format('d.m.Y') }}
+                                                @else
+                                                    —
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-2 text-xs text-gray-500">
+                            {{ count($plentyCustomersData['customers']) }} Endkunden aus Plenty-Aufträgen geladen (15 Min. gecacht).
                         </div>
                     @endif
                 @endif

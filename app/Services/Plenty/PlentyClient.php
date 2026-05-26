@@ -17,6 +17,7 @@ use App\Services\Plenty\Requests\GetItemImagesRequest;
 use App\Services\Plenty\Requests\GetItemsRequest;
 use App\Services\Plenty\Requests\GetItemVariationsRequest;
 use App\Services\Plenty\Requests\GetManufacturersRequest;
+use App\Services\Plenty\Requests\GetOrdersByContactRequest;
 use App\Services\Plenty\Requests\GetOrderStatusesRequest;
 use App\Services\Plenty\Requests\GetReferrersRequest;
 use App\Services\Plenty\Requests\GetSalesPricesRequest;
@@ -813,5 +814,129 @@ class PlentyClient
         $response->throw();
 
         return $response->json();
+    }
+
+    /**
+     * Bir Plenty contact'ın receiver olduğu Aufträge'i çek + her Auftrag'ın
+     * Lieferadresse'sinden alıcı bilgisini özetle.
+     *
+     * Bu, B2B müşterimizin Plenty'de gördüğü "son tüketici" listesidir.
+     *
+     * @return array<int, array{
+     *   order_id:int, order_date:?string, total:?float, currency:?string, status_id:?float,
+     *   buyer_name:string, buyer_company:string, buyer_email:string, buyer_phone:string,
+     *   buyer_postal_code:string, buyer_town:string, buyer_country_id:?int,
+     * }>
+     */
+    public function getEndCustomersByContact(int $contactId, int $maxOrders = 500): array
+    {
+        $orders = [];
+        $page = 1;
+        while (count($orders) < $maxOrders) {
+            $response = $this->connector()->send(new GetOrdersByContactRequest($contactId, $page, 100));
+            $response->throw();
+            $body = $response->json();
+            $entries = $body['entries'] ?? [];
+            if (empty($entries)) {
+                break;
+            }
+            $orders = array_merge($orders, $entries);
+
+            if (! empty($body['isLastPage'])) {
+                break;
+            }
+            $page++;
+            if ($page > 20) {
+                break;
+            }
+        }
+
+        $customers = [];
+        foreach ($orders as $order) {
+            $deliveryAddress = $this->extractDeliveryAddress($order);
+            $customers[] = [
+                'order_id' => (int) ($order['id'] ?? 0),
+                'order_date' => $order['createdAt'] ?? ($order['dates'][0]['date'] ?? null),
+                'total' => isset($order['amounts'][0]['invoiceTotal']) ? (float) $order['amounts'][0]['invoiceTotal'] : null,
+                'currency' => $order['amounts'][0]['currency'] ?? null,
+                'status_id' => isset($order['statusId']) ? (float) $order['statusId'] : null,
+                'buyer_name' => trim(($deliveryAddress['name2'] ?? '').' '.($deliveryAddress['name3'] ?? '')),
+                'buyer_company' => $deliveryAddress['name1'] ?? '',
+                // Plenty option typeId konvansiyonu hesaplara göre değişebilir.
+                // E-posta için "@" içeren değeri, telefon için kalan rakam ağırlıklı değeri seç.
+                'buyer_email' => $this->extractEmailFromOptions($deliveryAddress),
+                'buyer_phone' => $this->extractPhoneFromOptions($deliveryAddress),
+                'buyer_postal_code' => $deliveryAddress['postalCode'] ?? '',
+                'buyer_town' => $deliveryAddress['town'] ?? '',
+                'buyer_country_id' => isset($deliveryAddress['countryId']) ? (int) $deliveryAddress['countryId'] : null,
+            ];
+        }
+
+        return $customers;
+    }
+
+    /**
+     * Auftrag içinden typeId=2 (Lieferadresse) olan adres objesini bul.
+     */
+    protected function extractDeliveryAddress(array $order): array
+    {
+        $addresses = $order['addresses'] ?? [];
+        $relations = $order['addressRelations'] ?? [];
+
+        // addressRelations'tan typeId=2 olan addressId'yi bul
+        $deliveryAddressId = null;
+        foreach ($relations as $r) {
+            if ((int) ($r['typeId'] ?? 0) === 2) {
+                $deliveryAddressId = (int) ($r['addressId'] ?? 0);
+                break;
+            }
+        }
+
+        if (! $deliveryAddressId) {
+            return $addresses[0] ?? [];
+        }
+
+        foreach ($addresses as $a) {
+            if ((int) ($a['id'] ?? 0) === $deliveryAddressId) {
+                return $a;
+            }
+        }
+
+        return $addresses[0] ?? [];
+    }
+
+    /**
+     * Address.options array'inden e-posta benzeri ("@" içeren) ilk değeri bul.
+     */
+    protected function extractEmailFromOptions(array $address): string
+    {
+        foreach ($address['options'] ?? [] as $opt) {
+            $value = (string) ($opt['value'] ?? '');
+            if (str_contains($value, '@')) {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Address.options array'inden telefon benzeri (sayı/+ ağırlıklı) ilk değeri bul.
+     */
+    protected function extractPhoneFromOptions(array $address): string
+    {
+        foreach ($address['options'] ?? [] as $opt) {
+            $value = (string) ($opt['value'] ?? '');
+            if ($value === '' || str_contains($value, '@')) {
+                continue;
+            }
+            // ASCII alphabetic karakter ağırlıklı değilse (telefon gibi numara/+/space) seç
+            $alpha = preg_match_all('/[A-Za-z]/', $value);
+            if ($alpha < 3) {
+                return $value;
+            }
+        }
+
+        return '';
     }
 }

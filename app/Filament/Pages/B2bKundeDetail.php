@@ -99,6 +99,7 @@ class B2bKundeDetail extends Page
                 ->action(function () {
                     Cache::forget("plenty:contact:{$this->supplier}:{$this->contact}");
                     Cache::forget($this->shopifyCustomersCacheKey());
+                    Cache::forget($this->plentyCustomersCacheKey());
 
                     Notification::make()
                         ->title('Cache geleert')
@@ -159,8 +160,37 @@ class B2bKundeDetail extends Page
             ->get();
     }
 
+    /**
+     * B2B müşterimizin Plenty'deki son tüketici alıcıları (Plenty Auftrag'ların
+     * Lieferadresse'sinden çıkarılmış).
+     *
+     * @return array{ok: bool, error: ?string, customers: array}
+     */
+    public function getPlentyCustomersProperty(): array
+    {
+        return Cache::remember(
+            $this->plentyCustomersCacheKey(),
+            now()->addMinutes(15),
+            function () {
+                try {
+                    $customers = (new PlentyClient($this->supplierModel))
+                        ->getEndCustomersByContact($this->contact, 500);
+
+                    return ['ok' => true, 'error' => null, 'customers' => $customers];
+                } catch (\Throwable $e) {
+                    return ['ok' => false, 'error' => $e->getMessage(), 'customers' => []];
+                }
+            },
+        );
+    }
+
     protected function shopifyCustomersCacheKey(): string
     {
         return "shopify:customers:{$this->supplier}:{$this->contact}";
+    }
+
+    protected function plentyCustomersCacheKey(): string
+    {
+        return "plenty:end_customers:{$this->supplier}:{$this->contact}";
     }
 }
