@@ -65,7 +65,7 @@ class ProductResource extends Resource
             ->columns([
                 Tables\Columns\ImageColumn::make('mainVariationImage')
                     ->label('Bild')
-                    ->state(fn (Product $record) => $record->variations()->whereNotNull('image_url')->first()?->image_url)
+                    ->state(fn (Product $record) => $record->variations->firstWhere('image_url', '!=', null)?->image_url)
                     ->square()
                     ->size(48),
                 Tables\Columns\TextColumn::make('plenty_item_id')
@@ -91,20 +91,20 @@ class ProductResource extends Resource
                     ->placeholder('—'),
                 Tables\Columns\TextColumn::make('mainVariationSku')
                     ->label('SKU')
-                    ->state(fn (Product $record) => $record->variations()->first()?->sku)
+                    ->state(fn (Product $record) => $record->variations->first()?->sku)
                     ->badge()
                     ->color('gray')
                     ->placeholder('—'),
                 Tables\Columns\TextColumn::make('mainVariationPrice')
                     ->label('Preis')
-                    ->state(fn (Product $record) => $record->variations()->first()?->retail_price)
+                    ->state(fn (Product $record) => $record->variations->first()?->retail_price)
                     ->money('EUR')
                     ->placeholder('—')
                     ->weight('semibold')
                     ->color('success'),
                 Tables\Columns\TextColumn::make('mainVariationStock')
                     ->label('Bestand')
-                    ->state(fn (Product $record) => $record->variations()->first()?->stock_net)
+                    ->state(fn (Product $record) => $record->variations->first()?->stock_net)
                     ->numeric()
                     ->placeholder('—'),
                 Tables\Columns\TextColumn::make('supplier.name')
@@ -275,7 +275,17 @@ class ProductResource extends Resource
             ->emptyStateHeading('Noch kein Katalog synchronisiert')
             ->emptyStateDescription('Oben auf „Katalog aus Plenty synchronisieren" klicken.')
             ->emptyStateIcon('heroicon-o-cube')
-            ->modifyQueryUsing(fn ($query) => $query->where('is_package', true)->orderBy('plenty_item_id'));
+            ->modifyQueryUsing(fn ($query) => $query
+                ->where('is_package', true)
+                ->select([
+                    'id', 'supplier_id', 'plenty_item_id', 'main_variation_id',
+                    'manufacturer_id', 'manufacturer_name', 'is_package',
+                    'name', 'name2', 'synced_at', 'created_at', 'updated_at',
+                ])
+                ->with(['variations' => fn ($q) => $q
+                    ->select('id', 'product_id', 'sku', 'retail_price', 'stock_net', 'image_url')
+                    ->orderBy('id')])
+                ->orderBy('plenty_item_id'));
     }
 
     public static function getPages(): array
